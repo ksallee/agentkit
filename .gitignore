@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.venv/
+.DS_Store
+
+# A person's own layer, never committed. The team layer in .agentkit/ is.
+.agentkit/local.*
