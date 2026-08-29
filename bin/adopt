@@ -1,0 +1,407 @@
+#!/usr/bin/env python3
+"""Seed the agentkit scaffolding into a project, and record what was written.
+
+    python3 bin/adopt /path/to/project                    # plan, writes nothing
+    python3 bin/adopt /path/to/project --write --pack python
+
+Standard library only, so this runs on a machine that has installed nothing
+and on any CI runner.
+
+The plan is the default and `--write` is opt-in, because the target is
+somebody's repository rather than a directory this tool owns. The first run
+against a project that already carries these files replaces every one of them
+and moves the project's copy aside, which is a change worth reading before it
+happens.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import subprocess
+import sys
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from pathlib import Path
+
+TEMPLATE = Path(__file__).resolve().parent.parent
+
+# The seed list is data in the template tree rather than a constant here, so a
+# test points `--template` at a fixture carrying its own list and never at the
+# real one. A suite coupled to the real tree fails every time a template file
+# changes, which trains people to ignore it.
+SEEDS = "seeds.json"
+
+# Committed, so both people see the same adoption state. One sha256 per seeded
+# file, of the template bytes that were written, which is what makes somebody's
+# edit visible on the next run.
+MANIFEST_REL = ".agentkit/manifest.json"
+MANIFEST_VERSION = 1
+
+TEAM_DIR = ".agentkit"
+
+# Appended to a target whose bytes nobody here wrote. Measured 2026-08-29 in
+# `mac-hours/probes/claude_plugin.py`: a `SKILL.md.local` beside a real
+# `SKILL.md` contributes nothing to the skill loader, and a directory holding
+# only the sidecar loads no skill at all. A kept edit cannot take effect by
+# accident, and it cannot take effect at all until somebody merges it back.
+SIDECAR_SUFFIX = ".local"
+
+# Directory noise that is never part of a template. Expanding a directory entry
+# picks up whatever is on disk, including whatever the last test run left.
+IGNORED_DIRS = ("__pycache__", ".git")
+IGNORED_NAMES = (".DS_Store",)
+IGNORED_SUFFIXES = (".pyc",)
+
+# What happened to one file. `unchanged` wrote nothing. `kept` is the only
+# status that leaves a second file behind.
+WRITTEN = "written"
+UNCHANGED = "unchanged"
+UPDATED = "updated"
+KEPT = "kept"
+
+# The gate lists, one per language. `adopt` refuses to guess this: a gate list
+# that names a command the project does not run makes rule 17 disagree with CI,
+# and a rule CI contradicts is worse than an absent one. The commands are a
+# starting list the project edits, and nothing here checks that they run.
+PACKS: dict[str, tuple[tuple[str, str], ...]] = {
+    "python": (
+        ("test", "uv run pytest"),
+        ("style", "uv run python bin/check-style"),
+        ("lint", "uvx ruff check ."),
+    ),
+    "typescript": (
+        ("check", "pnpm check"),
+        ("test", "pnpm test"),
+    ),
+    "python+typescript": (
+        ("test", "uv run pytest"),
+        ("style", "uv run python bin/check-style"),
+        ("lint", "uvx ruff check ."),
+        ("web-check", "cd web && pnpm check"),
+        ("web-test", "cd web && pnpm test"),
+    ),
+    "none": (),
+}
+
+
+@dataclass(frozen=True)
+class Outcome:
+    """One file's result. `rel` is posix, relative to the project root."""
+
+    rel: str
+    status: str
+    sidecar: str | None = None
+
+
+def _sha(payload: bytes) -> str:
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _now() -> str:
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def seeds(template: Path) -> list[tuple[str, Path]]:
+    """Every seeded file, as (relative path, source path), sorted.
+
+    An entry ending in `/` expands to every file under it, so a skill that
+    grows a reference file travels without an edit here, and a file that lands
+    on another branch joins the seed list when it lands. Sorting is what makes
+    the output and the manifest stable between runs.
+
+    A missing entry raises. A seed list naming a file nobody wrote is a
+    template that would adopt differently depending on which files happened to
+    exist, and failing at that point costs one line in `seeds.json`.
+    """
+    listed = json.loads((template / SEEDS).read_text())["tracked"]
+    found: list[tuple[str, Path]] = []
+    for entry in listed:
+        source = template / entry
+        if entry.endswith("/"):
+            if not source.is_dir():
+                raise SystemExit(f"seeds.json names {entry}, which is not a directory in {template}")
+            found += [
+                (p.relative_to(template).as_posix(), p) for p in source.rglob("*") if p.is_file() and _carried(p)
+            ]
+        else:
+            if not source.is_file():
+                raise SystemExit(f"seeds.json names {entry}, which is not a file in {template}")
+            found.append((entry, source))
+    return sorted(found)
+
+
+def _carried(path: Path) -> bool:
+    """Whether an expanded directory entry seeds this file."""
+    if any(part in IGNORED_DIRS for part in path.parts):
+        return False
+    return path.name not in IGNORED_NAMES and path.suffix not in IGNORED_SUFFIXES
+
+
+def manifest(project: Path) -> dict[str, str]:
+    """Path to sha256 for every file the last adoption wrote. Empty before the first."""
+    try:
+        loaded = json.loads((project / MANIFEST_REL).read_text())
+    except (OSError, ValueError):
+        return {}
+    files = loaded.get("files")
+    return dict(files) if isinstance(files, dict) else {}
+
+
+def plan(template: Path, project: Path) -> list[Outcome]:
+    """What a write would do to each file, changing nothing.
+
+    Four cases, from comparing the target against both the template bytes and
+    the recorded hash. A target matching the template is `unchanged`. A target
+    matching the manifest is this template's own older copy, so the newer
+    version replaces it. A target matching neither was written by somebody
+    here, and their copy is kept. A target with no manifest row counts as
+    somebody's work, which is why the first run against an existing project
+    reports `kept` for every file it collides with.
+    """
+    recorded = manifest(project)
+    out: list[Outcome] = []
+    for rel, src in seeds(template):
+        want = _sha(src.read_bytes())
+        target = project / rel
+        if not target.is_file():
+            out.append(Outcome(rel, WRITTEN))
+            continue
+        have = _sha(target.read_bytes())
+        if have == want:
+            out.append(Outcome(rel, UNCHANGED))
+        elif have == recorded.get(rel):
+            out.append(Outcome(rel, UPDATED))
+        else:
+            out.append(Outcome(rel, KEPT, rel + SIDECAR_SUFFIX))
+    return out
+
+
+def write(template: Path, project: Path) -> list[Outcome]:
+    """Seed every tracked file, and record the hashes of what was written.
+
+    Idempotent: a second run over an untouched project writes no file and
+    reports every one `unchanged`. The manifest is rewritten either way, so a
+    deleted or corrupt one repairs itself on the next run.
+    """
+    results = plan(template, project)
+    files: dict[str, str] = {}
+    for result in results:
+        payload = (template / result.rel).read_bytes()
+        target = project / result.rel
+        files[result.rel] = _sha(payload)
+        if result.status == UNCHANGED:
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if result.sidecar:
+            # The project's most recent version, which replaces any earlier one
+            # kept here. Two edits in a row without an adoption between them is
+            # the only way that loses anything, and the alternative is a pile of
+            # numbered files nobody reads.
+            (project / result.sidecar).write_bytes(target.read_bytes())
+        target.write_bytes(payload)
+    _record(template, project, files)
+    return results
+
+
+def _record(template: Path, project: Path, files: dict[str, str]) -> Path:
+    """Write the manifest, naming where the bytes came from.
+
+    The origin and the commit are provenance for a reader asking which template
+    version a project is on. Neither is read back: a rerun compares hashes, and
+    a template moved to another directory still updates the project it seeded.
+    """
+    path = project / MANIFEST_REL
+    path.parent.mkdir(parents=True, exist_ok=True)
+    body = {
+        "version": MANIFEST_VERSION,
+        "template": {"origin": str(template), "commit": _commit(template)},
+        "written_at": _now(),
+        "files": dict(files),
+    }
+    path.write_text(json.dumps(body, indent=2, sort_keys=True) + "\n")
+    return path
+
+
+def _commit(root: Path) -> str:
+    """The template's HEAD, or an empty string when git cannot answer."""
+    try:
+        done = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return done.stdout.strip() if done.returncode == 0 else ""
+
+
+# ---------------------------------------------------------------------------
+# The team layer, which the project owns
+
+
+def team_files(answers: dict[str, str]) -> dict[str, str]:
+    """The three team-layer files, rendered from the answers.
+
+    Seeded once and never tracked in the manifest, because these carry the
+    project's own decisions the moment somebody edits them. A file the template
+    would overwrite is a file two people cannot settle anything in.
+    """
+    pack = answers["pack"]
+    gates = "\n".join(
+        f'\n[[gate]]\nname = "{name}"\nrun = "{run}"\n' for name, run in PACKS[pack]
+    )
+    return {
+        "gates.toml": (
+            "# Every gate this project runs, in order. Rule 17 cites this file and\n"
+            "# nothing else declares a gate, so the rule text, `bin/verify` and CI\n"
+            f"# cannot disagree with each other. Seeded from the {pack} pack.\n"
+            "#\n"
+            "# Nothing checked that these commands run here. Edit the list to match\n"
+            "# the project, and CI follows.\n" + gates
+        ),
+        "phase.json": json.dumps({"version": 1, "phase": answers["phase"]}, indent=2) + "\n",
+        "team.md": (
+            f"# {answers['name']}\n\n"
+            f"{answers['summary']}\n\n"
+            "## The layer this file is\n\n"
+            "Committed, and it wins over anybody's `context.md` on anything two\n"
+            "people have to agree on. One person opting out of the gate list is\n"
+            "a decision rather than a preference.\n\n"
+            "## Who reviews and who merges\n\n"
+            f"{answers['merge']}\n\n"
+            "## Who owns what\n\n"
+            "One row per area, naming the person who decides when two answers\n"
+            "conflict. Unanswered until somebody fills it in.\n\n"
+            "| Area | Owner |\n|---|---|\n|  |  |\n\n"
+            "## Conventions this project settled\n\n"
+            "What a reader would get wrong without being told. Empty is honest\n"
+            "until something has actually been settled.\n"
+        ),
+    }
+
+
+def seed_team(project: Path, answers: dict[str, str]) -> list[Outcome]:
+    """Write each team-layer file that is absent, and report the rest as present."""
+    out: list[Outcome] = []
+    for name, body in sorted(team_files(answers).items()):
+        target = project / TEAM_DIR / name
+        rel = f"{TEAM_DIR}/{name}"
+        if target.is_file():
+            out.append(Outcome(rel, "present"))
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(body)
+        out.append(Outcome(rel, "seeded"))
+    return out
+
+
+def plan_team(project: Path) -> list[Outcome]:
+    """Which team-layer files a write would seed, writing none."""
+    return [
+        Outcome(f"{TEAM_DIR}/{name}", "present" if (project / TEAM_DIR / name).is_file() else "seeded")
+        for name in sorted(("gates.toml", "phase.json", "team.md"))
+    ]
+
+
+# ---------------------------------------------------------------------------
+# The command
+
+
+def default_phase(project: Path) -> str:
+    """`building` for a project with a history, `shaping` for one without.
+
+    A four hundred commit repository is not shaping, and a directory with no
+    commit in it has no board to pick work from. Both are overridable, and the
+    skill asks rather than trusting this.
+    """
+    try:
+        done = subprocess.run(
+            ["git", "-C", str(project), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return "shaping"
+    return "building" if done.returncode == 0 else "shaping"
+
+
+def report(project: Path, files: list[Outcome], team: list[Outcome], dry: bool) -> None:
+    """Name every file and both sides of every kept edit.
+
+    A second file nobody was told about is a file nobody finds, so a kept line
+    carries the sidecar name. The summary states the kept count on its own,
+    because that is the number a first adoption turns on.
+    """
+    print(f"\nproject  {project}")
+    for row in files:
+        line = f"  {row.status:<9} {row.rel}"
+        if row.sidecar:
+            line += f"   yours kept as {row.sidecar}"
+        print(line)
+    print(f"\nteam     {project / TEAM_DIR}")
+    for row in team:
+        print(f"  {row.status:<9} {row.rel}")
+
+    counts = {status: sum(1 for r in files if r.status == status) for status in (WRITTEN, UNCHANGED, UPDATED, KEPT)}
+    print("\n" + "  ".join(f"{n} {status}" for status, n in counts.items()))
+    if counts[KEPT]:
+        print(
+            f"\n{counts[KEPT]} file(s) already exist here and differ from the template.\n"
+            "A write replaces each one and moves the project's copy to a .local\n"
+            "sidecar that nothing loads. On a project older than this template,\n"
+            "that is the whole first adoption, and the merge back is by hand."
+        )
+    if dry:
+        print("\nplan only, nothing written. Rerun with --write.")
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description="Seed the agentkit scaffolding into a project.")
+    ap.add_argument("project", type=Path, help="The project to adopt into.")
+    ap.add_argument("--write", action="store_true", help="Write. Without it this prints the plan and stops.")
+    ap.add_argument("--template", type=Path, default=TEMPLATE, help="The template tree to seed from.")
+    ap.add_argument("--pack", choices=sorted(PACKS), help="Which gate list to seed. Required to write the team layer.")
+    ap.add_argument("--name", help="The project's name. Defaults to the directory name.")
+    ap.add_argument("--summary", default="", help="One line saying what the project is.")
+    ap.add_argument("--phase", choices=("shaping", "building"), help="Defaults by whether the target has a commit.")
+    ap.add_argument("--merge", default="", help="Who reviews and who merges.")
+    args = ap.parse_args(argv)
+
+    project = args.project.resolve()
+    if not project.is_dir():
+        print(f"{project} is not a directory.", file=sys.stderr)
+        return 2
+
+    needs_team = not (project / TEAM_DIR / "gates.toml").is_file()
+    if args.write and needs_team and not args.pack:
+        # The one answer that cannot be inferred. Guessing python from a
+        # `pyproject.toml` gets a project with a `web/` half wrong, and the
+        # wrong gate list is the failure this refuses to risk.
+        print("--pack is required the first time, and it is the one answer adopt will not guess.", file=sys.stderr)
+        print(f"Choose one of: {', '.join(sorted(PACKS))}", file=sys.stderr)
+        return 2
+
+    answers = {
+        "pack": args.pack or "none",
+        "name": args.name or project.name,
+        "summary": args.summary or "Unanswered. One line saying what this project is.",
+        "phase": args.phase or default_phase(project),
+        "merge": args.merge or "The author does not merge their own pull request.",
+    }
+
+    if args.write:
+        files = write(args.template, project)
+        team = seed_team(project, answers)
+    else:
+        files = plan(args.template, project)
+        team = plan_team(project)
+    report(project, files, team, dry=not args.write)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

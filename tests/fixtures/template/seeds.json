@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "note": "A template tree that exists to be adopted in a test. One directory entry and one file entry, so both expansions are exercised.",
+  "tracked": [
+    ".claude/skills/",
+    "docs/development/STYLE.md"
+  ]
+}

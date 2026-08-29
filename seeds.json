@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "note": "Every path adopt seeds into a project and tracks in the manifest. An entry ending in / expands to every file under it, so a file landing on another branch joins this list when it lands. CLAUDE.md is absent on purpose: this repository's copy describes agentkit itself, and the skeleton a project gets is issue 1.",
+  "tracked": [
+    ".claude/skills/",
+    "docs/development/"
+  ]
+}
