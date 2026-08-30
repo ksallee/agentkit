@@ -140,12 +140,25 @@ STATUSES = (SEEDED, PRESENT, APPENDED, *FILE_STATUSES)
 # it is the pack for a project declaring its own list, and `bin/verify` treats
 # an empty declaration as a choice rather than a break.
 #
+# The two python packs declare the probes gate, for the same reason the style
+# gate is everywhere: `seeds.json` seeds `bin/check-probes` and, since #71,
+# `probes/skill_sources.py`, so both packs have something to check and the
+# interpreter to check it with. `typescript` is left out because
+# `bin/check-probes` is a Python script and a node project should not take an
+# interpreter to run one gate.
+#
+# A project that drops rule 9 drops this gate with it. `bin/check-probes`
+# passes on an empty `probes/` and fails on an absent one with `Drop the probes
+# gate, or add probes`, measured 2026-08-30, so the failure names its own
+# remedy and the gate list is the team layer's to edit.
+#
 # The runner splits a command with `shlex` and runs it without a shell, so a
 # gate that has to run somewhere else declares `cwd` and never writes `cd x &&`
 # into the command. Without the field the runner looks for a binary named `cd`.
 PACKS: dict[str, tuple[tuple[str, str, str | None], ...]] = {
     "python": (
         ("style", "bin/check-style .", None),
+        ("probes", "bin/check-probes", None),
         ("test", "uv run pytest", None),
         ("lint", "uvx ruff check .", None),
     ),
@@ -156,6 +169,7 @@ PACKS: dict[str, tuple[tuple[str, str, str | None], ...]] = {
     ),
     "python+typescript": (
         ("style", "bin/check-style .", None),
+        ("probes", "bin/check-probes", None),
         ("test", "uv run pytest", None),
         ("lint", "uvx ruff check .", None),
         ("web-check", "pnpm check", "web"),
