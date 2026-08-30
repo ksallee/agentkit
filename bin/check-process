@@ -1,0 +1,518 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# ///
+"""Gate the half of rules 11, 12, 13, 15, 16 and 19 a machine can read.
+
+    bin/check-process --repo owner/name --pull 21   # fetch with gh, then check
+    bin/check-process --input pull.json             # a saved bundle
+    bin/check-process --dump pull.json --repo owner/name --pull 21
+    bin/check-process --push --before SHA --after SHA
+
+Seven checks. Five are code and travel to every project unchanged: the pull
+request body opens `Closes #N`, the branch is named after an issue that body
+closes, that issue has an assignee, every non-merge commit subject ends `#N`
+and carries no type prefix, and the body and the subjects pass the style rules
+`bin/check-style` already holds.
+
+Two are configuration, because they read a project's own facts:
+
+- labels (rule 15) needs the taxonomy, and `area:` is one project's prefix.
+- diff (rule 19) needs the paths that project captured about a person, and a
+  database file is one project's answer.
+
+Both read `.agentkit/process.toml`, the team layer. A project that has
+configured neither gets five checks and two lines saying `absent`, printed on
+every run and written to the job summary. Passing a configured rule nobody
+configured is how a check becomes decoration, so an unconfigured one says so
+where a reader of the pull request sees it.
+
+`Capture change, no issue.` as the first line of the body waives the body,
+branch, assignee and subject checks, which is rules 11, 13 and 16. Rule 21
+gives a capture change no issue to close. Labels, diff and style still apply.
+
+Rule 18 is absent on purpose. The permission to merge lives in
+`.agentkit/team.md` as a sentence, and a machine cannot tell an approved merge
+from an impatient one.
+
+Run through uv for `tomllib`, which arrived in 3.11 and is missing from the
+3.9 that stock macOS ships. `bin/verify` carries the same shebang for the same
+reason.
+"""
+
+from __future__ import annotations
+
+import argparse
+import fnmatch
+import json
+import os
+import re
+import subprocess
+import sys
+from dataclasses import dataclass
+from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_loader
+from pathlib import Path, PurePosixPath
+
+HERE = Path(__file__).resolve().parent
+DEFAULT_ROOT = HERE.parent
+
+CONFIG_REL = ".agentkit/process.toml"
+
+# Rule 10's third exception, quoted from WORKFLOW.md. A body opening with this
+# line has no issue to close, so the four checks that read an issue number
+# report `waived` instead of failing.
+CAPTURE = "Capture change, no issue."
+
+# GitHub closes an issue on any of these, so all of them are read. Rule 16
+# writes `Closes`, and a body opening `Fixes #12` still closes #12 on merge.
+CLOSING = re.compile(r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)\b", re.I)
+
+# `12` and `12-slug`, rule 11.
+BRANCH = re.compile(r"^(\d+)(?:-|$)")
+
+# Rule 13's subject ends with the issue number and starts with the issue title.
+SUBJECT_ISSUE = re.compile(r"#(\d+)\s*$")
+
+# Rule 13 says no type prefix. Conventional Commits is the habit it rules out,
+# and its vocabulary is fixed enough to match.
+TYPE_PREFIX = re.compile(r"^(?:feat|fix|chore|docs|refactor|test|style|build|ci|perf)(?:\([^)]*\))?!?:", re.I)
+
+# A sha of nothing. A push event carries it as `before` when a branch is
+# created and as `after` when one is deleted.
+EMPTY_SHA = "0" * 40
+
+PASS = "pass"
+FAIL = "FAIL"
+ABSENT = "absent"
+WAIVED = "waived"
+
+NAME_COLUMN = 8
+
+
+@dataclass(frozen=True)
+class Check:
+    name: str
+    rule: str
+    status: str
+    detail: str
+
+    @property
+    def failed(self) -> bool:
+        return self.status == FAIL
+
+
+# ---------------------------------------------------------------------------
+# What a pull request is, reduced to the fields the checks read
+
+
+@dataclass(frozen=True)
+class Commit:
+    sha: str
+    message: str
+    parents: int
+
+    @property
+    def subject(self) -> str:
+        return self.message.splitlines()[0] if self.message else ""
+
+    @property
+    def merge(self) -> bool:
+        return self.parents > 1
+
+
+@dataclass(frozen=True)
+class Pull:
+    number: int
+    body: str
+    branch: str
+    labels: tuple[str, ...]
+    commits: tuple[Commit, ...]
+    files: tuple[str, ...]
+    # Issue number to its assignee logins. An issue the fetch could not read is
+    # absent from the map, which the assignee check reports rather than skips.
+    issues: dict[str, list[str]]
+
+    # Issue number to why the fetch failed. A token without `issues: read`
+    # answers 404 to an issue that exists, and the check saying which call
+    # failed is the difference between a permission fix and a hunt.
+    unreadable: dict[str, str]
+
+    @property
+    def capture(self) -> bool:
+        first = first_line(self.body)
+        return first == CAPTURE
+
+    @property
+    def closes(self) -> list[int]:
+        return [int(n) for n in CLOSING.findall(self.body)]
+
+
+def first_line(body: str) -> str:
+    for line in (body or "").splitlines():
+        if line.strip():
+            return line.strip()
+    return ""
+
+
+def bundle(payload: dict) -> Pull:
+    """A Pull from the JSON `--dump` writes and `--input` reads."""
+    return Pull(
+        number=int(payload.get("number", 0)),
+        body=payload.get("body") or "",
+        branch=payload.get("branch") or "",
+        labels=tuple(payload.get("labels") or ()),
+        commits=tuple(
+            Commit(c.get("sha", ""), c.get("message", ""), int(c.get("parents", 1)))
+            for c in payload.get("commits") or ()
+        ),
+        files=tuple(payload.get("files") or ()),
+        issues={str(k): list(v) for k, v in (payload.get("issues") or {}).items()},
+        unreadable={str(k): str(v) for k, v in (payload.get("unreadable") or {}).items()},
+    )
+
+
+def as_payload(pull: Pull) -> dict:
+    return {
+        "number": pull.number,
+        "body": pull.body,
+        "branch": pull.branch,
+        "labels": list(pull.labels),
+        "commits": [{"sha": c.sha, "message": c.message, "parents": c.parents} for c in pull.commits],
+        "files": list(pull.files),
+        "issues": pull.issues,
+        "unreadable": pull.unreadable,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Fetching, which is the only part that talks to GitHub
+
+
+def gh(path: str, paginate: bool = False) -> object:
+    """One `gh api` call. Measured in probes/gh_pull_request.py."""
+    args = ["gh", "api", path] + (["--paginate"] if paginate else [])
+    try:
+        done = subprocess.run(args, capture_output=True, text=True)
+    except FileNotFoundError:
+        sys.exit("gh is not installed, and --repo needs it. Use --input with a saved bundle.")
+    if done.returncode != 0:
+        raise RuntimeError(f"{' '.join(args)} exited {done.returncode}: {done.stderr.strip()[:200]}")
+    return json.loads(done.stdout)
+
+
+def fetch(repo: str, number: int) -> Pull:
+    """The bundle, from the four payloads the probe prints.
+
+    `pulls/{n}/commits` rather than `gh pr view --json commits`: that one
+    truncates a subject at 72 characters and carries no parent count, and both
+    are what rule 13 reads.
+    """
+    pull = gh(f"repos/{repo}/pulls/{number}")
+    commits = gh(f"repos/{repo}/pulls/{number}/commits", paginate=True)
+    files = gh(f"repos/{repo}/pulls/{number}/files", paginate=True)
+    body = pull.get("body") or ""
+
+    issues: dict[str, list[str]] = {}
+    unreadable: dict[str, str] = {}
+    for issue in sorted({int(n) for n in CLOSING.findall(body)}):
+        try:
+            found = gh(f"repos/{repo}/issues/{issue}")
+        except RuntimeError as exc:
+            unreadable[str(issue)] = str(exc)
+            continue
+        issues[str(issue)] = [a["login"] for a in found.get("assignees") or ()]
+
+    return Pull(
+        number=int(pull["number"]),
+        body=body,
+        branch=pull["head"]["ref"],
+        labels=tuple(label["name"] for label in pull.get("labels") or ()),
+        commits=tuple(
+            Commit(c["sha"], c["commit"]["message"], len(c.get("parents") or ())) for c in commits
+        ),
+        files=tuple(f["filename"] for f in files),
+        issues=issues,
+        unreadable=unreadable,
+    )
+
+
+# ---------------------------------------------------------------------------
+# The team layer
+
+
+def config(root: Path) -> dict:
+    import tomllib
+
+    path = root / CONFIG_REL
+    if not path.is_file():
+        return {}
+    try:
+        return tomllib.loads(path.read_text(encoding="utf-8"))
+    except tomllib.TOMLDecodeError as exc:
+        sys.exit(f"{path} is not valid TOML: {exc}")
+
+
+# ---------------------------------------------------------------------------
+# The five checks that travel
+
+
+def check_body(pull: Pull) -> Check:
+    """Rule 16. The body opens `Closes #N`, or waives it as a capture change."""
+    first = first_line(pull.body)
+    if not first:
+        return Check("body", "16", FAIL, "The body is empty. It opens `Closes #N`.")
+    if pull.capture:
+        return Check("body", "16", WAIVED, f"`{CAPTURE}` under rule 21.")
+    if not CLOSING.match(first):
+        return Check(
+            "body",
+            "16",
+            FAIL,
+            f"The body opens `Closes #N` on its own line, or `{CAPTURE}`. It opens: {first[:70]!r}",
+        )
+    return Check("body", "16", PASS, "Closes " + ", ".join(f"#{n}" for n in pull.closes))
+
+
+def check_branch(pull: Pull) -> Check:
+    """Rule 11. The branch is named after an issue the body closes."""
+    if pull.capture:
+        return Check("branch", "11", WAIVED, "A capture change closes no issue.")
+    found = BRANCH.match(pull.branch)
+    if not found:
+        return Check("branch", "11", FAIL, f"`{pull.branch}` opens with no issue number. Name it `12` or `12-slug`.")
+    number = int(found.group(1))
+    if number not in pull.closes:
+        closed = ", ".join(f"#{n}" for n in pull.closes) or "nothing"
+        return Check("branch", "11", FAIL, f"`{pull.branch}` is issue #{number} and the body closes {closed}.")
+    return Check("branch", "11", PASS, f"`{pull.branch}` is issue #{number}.")
+
+
+def check_assignee(pull: Pull) -> Check:
+    """Rule 11. Assignment claims the work, so every closed issue has one."""
+    if pull.capture:
+        return Check("assignee", "11", WAIVED, "A capture change closes no issue.")
+    if not pull.closes:
+        return Check("assignee", "11", FAIL, "The body closes no issue, so there is nobody to check.")
+    unknown = [n for n in pull.closes if str(n) not in pull.issues]
+    if unknown:
+        why = [pull.unreadable.get(str(n), "no answer") for n in unknown]
+        return Check(
+            "assignee",
+            "11",
+            FAIL,
+            "Could not read " + ", ".join(f"#{n}" for n in unknown) + "\n" + "\n".join(why)
+            + "\nA 404 on an issue that exists is a token without `issues: read`.",
+        )
+    empty = [n for n in pull.closes if not pull.issues[str(n)]]
+    if empty:
+        return Check("assignee", "11", FAIL, "Nobody is assigned to " + ", ".join(f"#{n}" for n in empty))
+    who = {who for n in pull.closes for who in pull.issues[str(n)]}
+    return Check("assignee", "11", PASS, ", ".join(sorted(who)))
+
+
+def check_subjects(pull: Pull) -> Check:
+    """Rule 13. Subject = issue title + issue number, and no type prefix."""
+    if pull.capture:
+        return Check("subjects", "13", WAIVED, "A capture change closes no issue.")
+    subjects = [c for c in pull.commits if not c.merge]
+    if not subjects:
+        return Check("subjects", "13", FAIL, "No non-merge commit on the branch.")
+    problems = []
+    for commit in subjects:
+        short = commit.sha[:8] or "?"
+        if TYPE_PREFIX.match(commit.subject):
+            problems.append(f"{short}: type prefix, and the subject is the issue title: {commit.subject[:60]!r}")
+        elif not SUBJECT_ISSUE.search(commit.subject):
+            problems.append(f"{short}: ends with no #N: {commit.subject[:60]!r}")
+    if problems:
+        return Check("subjects", "13", FAIL, "\n".join(problems))
+    return Check("subjects", "13", PASS, f"{len(subjects)} subject(s) end with an issue number.")
+
+
+def style_rules() -> tuple:
+    """The rules `bin/check-style` holds, loaded rather than copied.
+
+    A second list would be the copy that drifts, and STYLE.md is one document.
+    """
+    path = HERE / "check-style"
+    if not path.is_file():
+        sys.exit(f"{path} is missing, and the style check reads its rules. Both files are seeded together.")
+    loader = SourceFileLoader("check_style", str(path))
+    module = module_from_spec(spec_from_loader(loader.name, loader))
+    loader.exec_module(module)
+    return module.RULES
+
+
+def check_style(pull: Pull) -> Check:
+    """Rule 24 over the two surfaces a file checker never sees."""
+    lines = [("body", n, line) for n, line in enumerate((pull.body or "").splitlines(), 1)]
+    lines += [(c.sha[:8] or "subject", 1, c.subject) for c in pull.commits if not c.merge]
+    problems = []
+    for where, n, line in lines:
+        for name, pattern, fix in style_rules():
+            found = pattern.search(line)
+            if found:
+                problems.append(f"{where}:{n}: {name} ({found.group(0).strip()[:40]!r}): {fix}")
+    if problems:
+        return Check("style", "24", FAIL, "\n".join(problems))
+    return Check("style", "24", PASS, f"{len(lines)} line(s) clean.")
+
+
+# ---------------------------------------------------------------------------
+# The two checks a project configures
+
+
+def check_labels(pull: Pull, declared: dict) -> Check:
+    """Rule 15. One `area:` label plus a kind, with the project naming both.
+
+    A kind is any label carrying neither the area prefix nor an axis prefix, so
+    the check follows a taxonomy as it grows instead of holding a second copy
+    of `gh label list`.
+    """
+    labels = declared.get("labels")
+    if not labels or not labels.get("area"):
+        return Check("labels", "15", ABSENT, f"No [labels] area prefix in {CONFIG_REL}.")
+    area = labels["area"]
+    axes = tuple(labels.get("axes") or ())
+
+    areas = [name for name in pull.labels if name.startswith(area)]
+    kinds = [name for name in pull.labels if not name.startswith((area, *axes))]
+    problems = []
+    if len(areas) != 1:
+        problems.append(f"{len(areas)} label(s) starting `{area}`, and rule 15 wants one: {areas or pull.labels}")
+    if not kinds:
+        problems.append(f"No kind label. `{area}` and {list(axes)} are the other axes: {list(pull.labels)}")
+    if problems:
+        return Check("labels", "15", FAIL, "\n".join(problems))
+    return Check("labels", "15", PASS, ", ".join(areas + kinds))
+
+
+def check_diff(pull: Pull, declared: dict) -> Check:
+    """Rule 19. Nothing the project captured about a person is in the diff."""
+    forbidden = tuple((declared.get("diff") or {}).get("forbidden") or ())
+    if not forbidden:
+        return Check("diff", "19", ABSENT, f"No [diff] forbidden paths in {CONFIG_REL}.")
+    hits = [
+        f"{path} matches `{pattern}`"
+        for path in pull.files
+        for pattern in forbidden
+        if PurePosixPath(path).match(pattern) or fnmatch.fnmatch(path, pattern)
+    ]
+    if hits:
+        return Check("diff", "19", FAIL, "\n".join(hits) + "\nA pushed object stays reachable after the branch goes.")
+    return Check("diff", "19", PASS, f"{len(pull.files)} file(s) against {len(forbidden)} pattern(s).")
+
+
+# ---------------------------------------------------------------------------
+# Rule 12, which reads a push rather than a pull request
+
+
+def check_history(root: Path, before: str, after: str) -> Check:
+    """Rule 12. `before` stays an ancestor of `after`, so nothing was force-pushed."""
+    if before == EMPTY_SHA or after == EMPTY_SHA:
+        return Check("history", "12", PASS, "A branch was created or deleted, so there is no history to lose.")
+    done = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", before, after],
+        cwd=root,
+        capture_output=True,
+        text=True,
+    )
+    if done.returncode == 0:
+        return Check("history", "12", PASS, f"{before[:8]} is an ancestor of {after[:8]}.")
+    detail = (done.stderr or "").strip()
+    return Check(
+        "history",
+        "12",
+        FAIL,
+        f"{before[:8]} is no longer an ancestor of {after[:8]}. Rule 12: merge `main` in, and never force-push."
+        + (f"\n{detail}" if detail else ""),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Reporting
+
+
+def report(checks: list[Check]) -> str:
+    width = max(NAME_COLUMN, *(len(c.name) for c in checks))
+    lines = [f"  {c.status:<7} {c.name:<{width}}  rule {c.rule}" for c in checks]
+    for check in checks:
+        if check.status in (FAIL, ABSENT):
+            lines.append(f"\n----- {check.name} ({check.status}) -----")
+            lines.append(check.detail)
+    failed = [c for c in checks if c.failed]
+    lines.append("")
+    if failed:
+        lines.append(f"{len(failed)} of {len(checks)} check(s) failed: {', '.join(c.name for c in failed)}")
+    else:
+        lines.append(f"{len(checks)} check(s), none failed.")
+    return "\n".join(lines)
+
+
+def summarise(text: str) -> None:
+    """Repeat the table into the job summary, so an `absent` line is visible.
+
+    A check nobody configured has to be readable without opening a log, which
+    is the whole answer to what a project with no taxonomy gets.
+    """
+    path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if not path:
+        return
+    with open(path, "a", encoding="utf-8") as fh:
+        fh.write("### Process checks\n\n```\n" + text + "\n```\n")
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description="Check the mechanical half of the workflow rules.")
+    ap.add_argument("--repo", help="owner/name. Fetches the pull request with gh.")
+    ap.add_argument("--pull", type=int, help="Pull request number, with --repo.")
+    ap.add_argument("--input", type=Path, help="A saved bundle, as --dump writes it.")
+    ap.add_argument("--dump", type=Path, help="Write the fetched bundle here as well as checking it.")
+    ap.add_argument("--push", action="store_true", help="Check rule 12 over a push instead.")
+    ap.add_argument("--before", default=EMPTY_SHA, help="The sha the branch was at, with --push.")
+    ap.add_argument("--after", default=EMPTY_SHA, help="The sha it is at now, with --push.")
+    ap.add_argument(
+        "--root",
+        type=Path,
+        default=DEFAULT_ROOT,
+        help="Project root holding " + CONFIG_REL + ". Default: the one this script sits in.",
+    )
+    args = ap.parse_args(argv)
+
+    root = args.root.resolve()
+
+    if args.push:
+        checks = [check_history(root, args.before, args.after)]
+    else:
+        if args.input:
+            pull = bundle(json.loads(args.input.read_text(encoding="utf-8")))
+        elif args.repo and args.pull:
+            try:
+                pull = fetch(args.repo, args.pull)
+            except RuntimeError as exc:
+                sys.exit(str(exc))
+            if args.dump:
+                args.dump.write_text(json.dumps(as_payload(pull), indent=2, sort_keys=True) + "\n")
+        else:
+            ap.error("Give --input, or --repo with --pull, or --push.")
+
+        declared = config(root)
+        checks = [
+            check_body(pull),
+            check_branch(pull),
+            check_assignee(pull),
+            check_subjects(pull),
+            check_labels(pull, declared),
+            check_diff(pull, declared),
+            check_style(pull),
+        ]
+
+    text = report(checks)
+    print(text)
+    summarise(text)
+    return 1 if any(c.failed for c in checks) else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

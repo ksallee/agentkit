@@ -11,9 +11,9 @@
 # only in CI: a gate that cannot fail is not a gate, and the rule reads "every
 # gate declared here passes".
 #
-# No probes gate. Rule 9 says a project with no external interface should drop
-# the rule rather than keep a dead one, and there is no `probes/` here.
-# `bin/check-probes` still travels, for the projects that do.
+# The probes gate arrived with `probes/`. `bin/check-process` reads four
+# GitHub payloads, which is the external interface rule 9 asks for a probe of,
+# and a gate that runs no probe was the reason this file declared none.
 #
 # Order is cheapest first, so a broken tree reports its fastest failure early
 # even though `bin/verify` runs every gate before it exits.
@@ -23,8 +23,12 @@ name = "style"
 command = "bin/check-style ."
 
 [[gate]]
+name = "probes"
+command = "bin/check-probes"
+
+[[gate]]
 name = "lint"
-command = "uvx ruff check bin tests"
+command = "uvx ruff check bin probes tests"
 
 # The interpreter is named here rather than in a `.python-version` file.
 # That file is read by pyenv as well as uv, and the two disagree: uv accepts a

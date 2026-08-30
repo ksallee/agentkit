@@ -1,0 +1,70 @@
+# The mechanical half of rules 11, 12, 13, 15, 16, 19 and 24, run on every
+# pull request and every push. `bin/check-process` holds all of it, so this
+# file names no rule text and cannot drift from the checks, the same way
+# `gates.yml` names no gate command.
+#
+# Two jobs from one file because a pull request and a push carry different
+# payloads. GitHub skips the one whose event did not fire, and the skipped job
+# still reports itself in the checks list.
+#
+# `edited`, `labeled` and `unlabeled` are in the trigger list because a body
+# fixed after a failure and a label added after a failure both have to rerun
+# the job. Without them the only way to clear a red check is an empty commit.
+
+name: Process
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize, labeled, unlabeled]
+  push:
+
+# `issues: read` is the assignee check. `repos/{owner}/{repo}/issues/{n}` is a
+# different scope from the pull request that closes it, and without this line
+# the job reports `Could not read #10` on a pull request whose issue is
+# assigned. Measured on the first run of this file, in PR #30.
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+
+concurrency:
+  group: process-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pull-request:
+    name: Rules 11, 13, 15, 16, 19 and 24 over the pull request
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      # `.agentkit/process.toml` comes from the checkout, so a pull request
+      # editing the taxonomy is checked against the taxonomy it proposes.
+      - run: bin/check-process --repo "$GITHUB_REPOSITORY" --pull "$PULL"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PULL: ${{ github.event.pull_request.number }}
+
+  push:
+    name: Rule 12 over the push
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      # Full history, because the check asks git whether the sha the branch was
+      # at is still reachable from the sha it is at now. A shallow clone has
+      # neither, and would fail every push instead of the force-pushed ones.
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      - run: bin/check-process --push --before "$BEFORE" --after "$AFTER"
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.after }}
