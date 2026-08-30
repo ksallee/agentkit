@@ -197,6 +197,28 @@ class TestThePacksOwnDriver:
         assert "per_pack" in declared["note"]
 
 
+class TestWhatEveryPackGates:
+    """The two gates that name no language toolchain, and the pack that declared neither.
+
+    `none` declared nothing, so a project on it took `bin/check-style`, rule 24
+    and a workflow running `bin/verify`, and `bin/verify` printed a green table
+    over a tree nothing checked (#141).
+    """
+
+    def test_every_pack_declares_the_style_gate(self):
+        for pack in adopt.PACKS:
+            commands = {command for _, command, _ in adopt.PACKS[pack]}
+            assert "bin/check-style ." in commands, pack
+
+    def test_no_pack_declares_an_empty_list(self):
+        """`run_gates` special-cases no pack, and no adoption seeds a list nothing runs."""
+        for pack in adopt.PACKS:
+            assert adopt.PACKS[pack], pack
+
+    def test_the_none_pack_declares_those_two_and_no_third(self):
+        assert [name for name, _, _ in adopt.PACKS["none"]] == ["style", "probes"]
+
+
 class TestTheSeededProbe:
     """`probes/skill_sources.py`, the one file under `probes/` named on its own line.
 
@@ -221,13 +243,14 @@ class TestTheSeededProbe:
         declared = json.loads((ROOT / "seeds.json").read_text())
         assert "probes/skill_sources.py" in declared["note"]
 
-    def test_the_python_packs_gate_the_probe(self):
+    def test_the_python_packs_and_the_none_pack_gate_the_probe(self):
         """A seeded probe nothing runs is rule 9's dead rule with a file attached.
 
-        Both python packs already run Python, so the checker costs them no
-        dependency they lack.
+        `seeds.json` puts `probes/skill_sources.py` in `tracked`, so every pack
+        receives a probe, and a pack gating none of it carries rule 9 with
+        nothing behind it.
         """
-        for pack in ("python", "python+typescript"):
+        for pack in ("python", "python+typescript", "none"):
             commands = {command for _, command, _ in adopt.PACKS[pack]}
             assert "bin/check-probes" in commands, pack
 
@@ -320,7 +343,7 @@ class TestTheSeededLintConfig:
             assert "ruff.toml" in {rel for rel, _ in adopt.seeds(ROOT, pack)}, pack
 
     def test_no_other_pack_receives_it(self):
-        """A node project reads no ruff config, and a `none` project runs no gate."""
+        """A node project reads no ruff config, and a `none` project runs no lint gate."""
         for pack in ("typescript", "none"):
             assert "ruff.toml" not in {rel for rel, _ in adopt.seeds(ROOT, pack)}, pack
 
@@ -460,10 +483,6 @@ class TestTheGateRunAfterAFirstWrite:
     @staticmethod
     def everything_installed(monkeypatch):
         monkeypatch.setattr(adopt.shutil, "which", lambda name: f"/usr/bin/{name}")
-
-    def test_a_pack_with_no_gates_runs_nothing(self, project, capsys):
-        assert adopt.run_gates(project, "none") == 0
-        assert "nothing to run" in capsys.readouterr().out
 
     def test_a_project_without_the_runner_runs_nothing(self, project, capsys):
         assert adopt.run_gates(project, "python") == 0
@@ -1193,6 +1212,14 @@ class TestTheTeamLayer:
         assert "# demo" in body
         assert "A project." in body
         assert "Both of us review." in body
+
+    def test_the_owner_section_says_nobody_has_been_asked(self, project, answers):
+        """An empty table row reads as a bug, and an agent filled it in (#145)."""
+        adopt.seed_team(project, answers)
+        body = (project / ".agentkit" / "team.md").read_text()
+        assert "## Who owns what" in body
+        assert "Nobody has been asked" in body
+        assert "|  |" not in body
 
     def test_the_team_layer_is_never_in_the_manifest(self, template, project, answers):
         adopt.write(template, project)

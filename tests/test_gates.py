@@ -138,7 +138,7 @@ class TestRunner:
         assert "No gate declaration" in done.stderr + done.stdout
 
     def test_an_empty_declaration_is_a_choice_and_passes(self, tmp_path):
-        """The `none` pack seeds exactly this, so it may not be an error."""
+        """A project may delete every gate it was seeded, so this may not be an error."""
         (tmp_path / ".agentkit").mkdir()
         (tmp_path / ".agentkit" / "gates.toml").write_text("# nothing yet\n", encoding="utf-8")
         done = run(VERIFY, "--root", str(tmp_path))
