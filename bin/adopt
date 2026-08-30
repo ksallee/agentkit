@@ -153,22 +153,26 @@ STATUSES = (SEEDED, PRESENT, APPENDED, *FILE_STATUSES)
 # one. The commands are a starting list the project edits, and nothing here
 # checks that they run.
 #
-# Every language pack declares the style gate, because `seeds.json` now seeds
-# `bin/check-style` and every project has prose. `none` stays empty on purpose:
-# it is the pack for a project declaring its own list, and `bin/verify` treats
-# an empty declaration as a choice rather than a break.
+# Every pack declares the style gate, because `seeds.json` seeds
+# `bin/check-style` and every project has prose. The pack names the language
+# toolchain a project has, so `none` means no language gate and takes the two
+# gates that name no toolchain. An empty list there seeds `bin/check-style`,
+# rule 24 telling the project to follow STYLE.md, and a workflow running
+# `bin/verify`, into a project where nothing runs any of them, and the runner
+# prints a green table over a tree nothing checked (#141).
 #
-# The two python packs declare the probes gate, for the same reason the style
-# gate is everywhere: `seeds.json` seeds `bin/check-probes` and, since #71,
-# `probes/skill_sources.py`, so both packs have something to check and the
-# interpreter to check it with. `typescript` is left out because
-# `bin/check-probes` is a Python script and a node project should not take an
-# interpreter to run one gate.
+# The probes gate goes to `none` and to the two python packs, for the same
+# reason the style gate is everywhere: `seeds.json` seeds `bin/check-probes`
+# and, since #71, `probes/skill_sources.py`, so every pack has something to
+# check. `typescript` is left out because `bin/check-probes` is a Python script
+# and a node project should not take an interpreter to run one gate.
 #
 # A project that drops rule 9 drops this gate with it. `bin/check-probes`
 # passes on an empty `probes/` and fails on an absent one with `Drop the probes
 # gate, or add probes`, measured 2026-08-30, so the failure names its own
-# remedy and the gate list is the team layer's to edit.
+# remedy and the gate list is the team layer's to edit. `bin/verify` reports an
+# empty declaration and passes, so a project that deletes both gates gets no
+# error from the runner.
 #
 # The runner splits a command with `shlex` and runs it without a shell, so a
 # gate that has to run somewhere else declares `cwd` and never writes `cd x &&`
@@ -193,7 +197,10 @@ PACKS: dict[str, tuple[tuple[str, str, str | None], ...]] = {
         ("web-check", "pnpm check", "web"),
         ("web-test", "pnpm test", "web"),
     ),
-    "none": (),
+    "none": (
+        ("style", "bin/check-style .", None),
+        ("probes", "bin/check-probes", None),
+    ),
 }
 
 
@@ -707,6 +714,12 @@ def team_files(answers: dict[str, str]) -> dict[str, str]:
     Seeded once and never tracked in the manifest, because these carry the
     project's own decisions the moment somebody edits them. A file the template
     would overwrite is a file two people cannot settle anything in.
+
+    `## Who owns what` seeds as a sentence saying nobody has been asked, the
+    way `## Conventions this project settled` does. A table with one empty row
+    reads as a bug: an agent fills it and a person deletes it, and neither
+    result is the unasked question rule 0 has to be able to tell from an
+    answered one (#145).
     """
     pack = answers["pack"]
     # `command` is the key the runner reads. A gate that names no `cwd` omits the
@@ -737,8 +750,7 @@ def team_files(answers: dict[str, str]) -> dict[str, str]:
             f"{answers['merge']}\n\n"
             "## Who owns what\n\n"
             "One row per area, naming the person who decides when two answers\n"
-            "conflict. Unanswered until somebody fills it in.\n\n"
-            "| Area | Owner |\n|---|---|\n|  |  |\n\n"
+            "conflict. Nobody has been asked, so there is no table yet.\n\n"
             "## Conventions this project settled\n\n"
             "What a reader would get wrong without being told. Empty is honest\n"
             "until something has actually been settled.\n\n"
@@ -1465,11 +1477,12 @@ def run_gates(project: Path, pack: str) -> int:
 
     A pack with pnpm gates installs before the runner. `install_pnpm` carries
     why.
+
+    Every pack declares at least the style gate, so nothing here special-cases
+    an empty list. A pack that declared none would reach `bin/verify`, which
+    reports the empty declaration and passes.
     """
     print(f"\ngates    {project / TEAM_DIR}/gates.toml")
-    if not PACKS[pack]:
-        print(f"  the {pack} pack declares no gates, so there is nothing to run")
-        return 0
     runner = project / RUNNER_REL
     if not runner.is_file():
         print(f"  nothing ran: {RUNNER_REL} is not here")
