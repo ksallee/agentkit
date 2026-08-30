@@ -95,11 +95,15 @@ project.** `bin/surface list` names the surfaces earlier sessions wrote, and
 the tree names what nobody has recorded yet: a role guide under `docs/`, a
 design skill, a router. Read both before routing.
 
-**A project with no `.agentkit/team.md` or no `.agentkit/local.md` keeps the row
-and reports the file as absent.** Rule 0 reads an absent personal layer as
-nobody having been asked yet. A shared convention with no team file waits for
-one. It does not go into somebody's personal file, and no seventh location gets
-invented for it.
+**Report an absent `.agentkit/team.md` or `.agentkit/local.md` in the recap,
+whether or not anything routed there this session.** Rule 0 reads an absent
+personal layer as nobody having been asked yet, and a session that reads it as
+"no preferences" says nothing and asks nothing, so the next session starts from
+defaults for the same reason. Write no stub: an empty file and a person nobody
+has asked look identical, and rule 0 depends on telling them apart.
+
+A shared convention with no team file waits for one. It does not go into
+somebody's personal file, and no seventh location gets invented for it.
 
 The issue row is the one this skill misses most. Four questions answered in a
 session is four decisions, and the next reader sees none of them until the
@@ -130,9 +134,10 @@ still hold? Counts and lists in `CLAUDE.md` and `WORKFLOW.md`. A skill saying
 ## 5. Say what happened
 
 Four lines, in order: what merged, with numbers; what is open and what it waits
-on; what was captured and where, plus what was already there; and anything the
-operator needs before the next session, such as a machine setting that changed
-or real data written during verification.
+on; what was captured and where, plus what was already there and which of rule
+0's layer files is still absent; and anything the operator needs before the
+next session, such as a machine setting that changed or real data written
+during verification.
 
 Then stop. `/work` is the next session's first move.
 
@@ -141,6 +146,8 @@ Then stop. `/work` is the next session's first move.
 | "Nothing was stated this session." | Read it back before saying so. A settled question is a decision. |
 | "It is in the recap." | The recap scrolls away. Rule 21 names a file. |
 | "There is no `team.md`, so it went in the personal layer." | The other person then never sees it. Report the absence. |
+| "Nothing routed to `.agentkit/local.md`, so there was nothing to report." | Rule 0 reads its absence as nobody having been asked. The recap says it is missing. |
+| "I wrote an empty `.agentkit/local.md` so the file exists." | A stub and an unasked person then look the same, and rule 0 can no longer tell. |
 | "I wrote the file, recording it is bookkeeping." | An unrecorded surface is one the next `/done` cannot see. |
 | "The branch is no ancestor of `main`, so its work never merged." | A squash merge always looks like that. Ask the pull request. |
 | "The gates were green earlier." | Rule 17: output in this session, or they did not pass. |
