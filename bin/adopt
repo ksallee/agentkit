@@ -61,26 +61,31 @@ UNCHANGED = "unchanged"
 UPDATED = "updated"
 KEPT = "kept"
 
-# The gate lists, one per language. `adopt` refuses to guess this: a gate list
-# that names a command the project does not run makes rule 17 disagree with CI,
-# and a rule CI contradicts is worse than an absent one. That is also why no
-# pack declares a style gate: the checker this scaffolding wants is not ported
-# yet (#7), and seeding a gate that names it would be the same failure. The commands are a
-# starting list the project edits, and nothing here checks that they run.
-PACKS: dict[str, tuple[tuple[str, str], ...]] = {
+# The gate lists, one per language, as (name, command, cwd). `adopt` refuses to
+# guess this: a gate list that names a command the project does not run makes
+# rule 17 disagree with CI, and a rule CI contradicts is worse than an absent
+# one. No pack declares a style gate, because `bin/check-style` is not ported
+# here yet (#3) and seeding a gate that names it would be the same failure. The
+# commands are a starting list the project edits, and nothing here checks that
+# they run.
+#
+# The runner splits a command with `shlex` and runs it without a shell, so a
+# gate that has to run somewhere else declares `cwd` and never writes `cd x &&`
+# into the command. Without the field the runner looks for a binary named `cd`.
+PACKS: dict[str, tuple[tuple[str, str, str | None], ...]] = {
     "python": (
-        ("test", "uv run pytest"),
-        ("lint", "uvx ruff check ."),
+        ("test", "uv run pytest", None),
+        ("lint", "uvx ruff check .", None),
     ),
     "typescript": (
-        ("check", "pnpm check"),
-        ("test", "pnpm test"),
+        ("check", "pnpm check", None),
+        ("test", "pnpm test", None),
     ),
     "python+typescript": (
-        ("test", "uv run pytest"),
-        ("lint", "uvx ruff check ."),
-        ("web-check", "cd web && pnpm check"),
-        ("web-test", "cd web && pnpm test"),
+        ("test", "uv run pytest", None),
+        ("lint", "uvx ruff check .", None),
+        ("web-check", "pnpm check", "web"),
+        ("web-test", "pnpm test", "web"),
     ),
     "none": (),
 }
@@ -250,8 +255,12 @@ def team_files(answers: dict[str, str]) -> dict[str, str]:
     would overwrite is a file two people cannot settle anything in.
     """
     pack = answers["pack"]
+    # `command` is the key the runner reads. A gate that names no `cwd` omits the
+    # line, so the seeded file carries nothing a reader has to interpret.
     gates = "\n".join(
-        f'\n[[gate]]\nname = "{name}"\nrun = "{run}"\n' for name, run in PACKS[pack]
+        f'\n[[gate]]\nname = "{name}"\ncommand = "{command}"\n'
+        + (f'cwd = "{cwd}"\n' if cwd else "")
+        for name, command, cwd in PACKS[pack]
     )
     return {
         "gates.toml": (

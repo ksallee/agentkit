@@ -245,7 +245,18 @@ class TestTheTeamLayer:
     def test_every_pack_writes_a_gate_list_a_parser_reads(self, project, answers, pack):
         adopt.seed_team(project, {**answers, "pack": pack})
         parsed = tomllib.loads((project / ".agentkit" / "gates.toml").read_text())
-        assert [g["run"] for g in parsed.get("gate", [])] == [run for _, run in adopt.PACKS[pack]]
+        gates = parsed.get("gate", [])
+        assert [g["name"] for g in gates] == [name for name, _, _ in adopt.PACKS[pack]]
+        # `command` is what bin/verify reads. `run` was the key here until #3 and
+        # the runner exits on it before running anything.
+        assert [g["command"] for g in gates] == [c for _, c, _ in adopt.PACKS[pack]]
+        assert [g.get("cwd") for g in gates] == [cwd for _, _, cwd in adopt.PACKS[pack]]
+
+    def test_no_seeded_command_needs_a_shell(self, project, answers):
+        """The runner uses shlex and no shell, so `cd x && y` looks for a binary named cd."""
+        for pack in adopt.PACKS:
+            for name, command, _ in adopt.PACKS[pack]:
+                assert "&&" not in command and not command.startswith("cd "), f"{pack}/{name}"
 
     def test_the_phase_is_machine_readable(self, project, answers):
         adopt.seed_team(project, answers)
