@@ -88,6 +88,18 @@ IGNORED_SUFFIXES = (".pyc",)
 # why a skill went missing find one list with the reason on it.
 TEMPLATE_ONLY = "template_only"
 
+# The third list in `seeds.json`: one file list per language pack, for a file
+# whose contents depend on which toolchain the project runs. The design capture
+# is the only one today, and it has to be: reading computed styles needs a
+# browser driver, and the driver a project can install is the one its pack
+# already declares.
+#
+# Every file named here is subtracted from the directory expansion that would
+# otherwise carry it, and the chosen pack's list is added back. A python project
+# receives `design/capture.py` and never the node driver beside it, which is
+# what keeps a seeded tree free of a script the project cannot run.
+PER_PACK = "per_pack"
+
 # What happened to one file. `unchanged` wrote nothing. `kept` is the only
 # status that leaves a second file behind.
 #
@@ -170,7 +182,7 @@ def _now() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def seeds(template: Path) -> list[tuple[str, Path]]:
+def seeds(template: Path, pack: str = "none") -> list[tuple[str, Path]]:
     """Every seeded file, as (relative path, source path), sorted.
 
     An entry ending in `/` expands to every file under it, so a skill that
@@ -183,14 +195,23 @@ def seeds(template: Path) -> list[tuple[str, Path]]:
     project by naming the `bin/` entries one by one. A path named on its own
     line in `tracked` is a decision somebody typed and seeds anyway.
 
-    A missing entry raises, on either list. A seed list naming a file nobody
-    wrote is a template that would adopt differently depending on which files
-    happened to exist, and an exclusion naming nothing stopped excluding
+    `per_pack` subtracts too, and puts one list back. Every file it names under
+    any pack is withheld from the expansion, and the entries under `pack` are
+    seeded. That is how a python project gets the Playwright capture and a
+    typescript project the Puppeteer one, out of a template holding both.
+
+    A missing entry raises, on any of the three lists. A seed list naming a file
+    nobody wrote is a template that would adopt differently depending on which
+    files happened to exist, and an exclusion naming nothing stopped excluding
     whatever it was written for. Failing at that point costs one line in
     `seeds.json`.
     """
     declared = json.loads((template / SEEDS).read_text())
+    per_pack = declared.get(PER_PACK, {})
+    if per_pack and pack not in per_pack:
+        raise SystemExit(f"seeds.json declares {PER_PACK} and names no list for the {pack} pack")
     withheld = [_named(template, entry) for entry in declared.get(TEMPLATE_ONLY, [])]
+    withheld += [_named(template, entry) for names in per_pack.values() for entry in names]
     found: list[tuple[str, Path]] = []
     for entry in declared["tracked"]:
         source = _named(template, entry)
@@ -202,6 +223,7 @@ def seeds(template: Path) -> list[tuple[str, Path]]:
             ]
         else:
             found.append((entry, source))
+    found += [(entry, _named(template, entry)) for entry in per_pack.get(pack, [])]
     return sorted(found)
 
 
@@ -228,6 +250,23 @@ def _withheld(path: Path, withheld: Collection[Path]) -> bool:
     return any(path == held or held in path.parents for held in withheld)
 
 
+def recorded_pack(project: Path) -> str:
+    """The language pack the last adoption seeded from, or an empty string.
+
+    The pack decides two things a rerun has to get right: the gate list and the
+    workflow, both seeded once, and which capture driver `per_pack` seeds, which
+    is replaced on every run. Without a record of it a rerun that omits
+    `--pack` would default to `none` and delete a driver the project runs, so
+    `main` asks again whenever this comes back empty.
+    """
+    try:
+        loaded = json.loads((project / MANIFEST_REL).read_text())
+    except (OSError, ValueError):
+        return ""
+    pack = loaded.get("pack")
+    return pack if isinstance(pack, str) else ""
+
+
 def manifest(project: Path) -> dict[str, str]:
     """Path to sha256 for every file the last adoption wrote. Empty before the first."""
     try:
@@ -238,7 +277,7 @@ def manifest(project: Path) -> dict[str, str]:
     return dict(files) if isinstance(files, dict) else {}
 
 
-def plan(template: Path, project: Path) -> list[Outcome]:
+def plan(template: Path, project: Path, pack: str = "none") -> list[Outcome]:
     """What a write would do to each file, changing nothing.
 
     Four cases come from comparing a seeded target against both the template
@@ -255,7 +294,7 @@ def plan(template: Path, project: Path) -> list[Outcome]:
     disk is reported nowhere, because there is no file to act on.
     """
     recorded = manifest(project)
-    tracked = seeds(template)
+    tracked = seeds(template, pack)
     out: list[Outcome] = []
     for rel, src in tracked:
         want = _sha(src.read_bytes())
@@ -279,14 +318,14 @@ def plan(template: Path, project: Path) -> list[Outcome]:
     return out
 
 
-def write(template: Path, project: Path) -> list[Outcome]:
+def write(template: Path, project: Path, pack: str = "none") -> list[Outcome]:
     """Seed every tracked file, clear the orphans, and record the hashes.
 
     Idempotent: a second run over an untouched project writes no file and
     reports every one `unchanged`. The manifest is rewritten either way, so a
     deleted or corrupt one repairs itself on the next run.
     """
-    results = plan(template, project)
+    results = plan(template, project, pack)
     files: dict[str, str] = {}
     gone: set[str] = set()
     for result in results:
@@ -317,7 +356,7 @@ def write(template: Path, project: Path) -> list[Outcome]:
         # executable bit cannot be run the way `gates.toml` names it, and the
         # failure is a permission error in CI rather than anything readable.
         target.chmod((template / result.rel).stat().st_mode & 0o777)
-    _record(template, project, files, gone)
+    _record(template, project, files, gone, pack)
     return results
 
 
@@ -333,7 +372,7 @@ def _prune(project: Path, directory: Path) -> None:
         directory = directory.parent
 
 
-def _record(template: Path, project: Path, files: dict[str, str], gone: Collection[str] = ()) -> Path:
+def _record(template: Path, project: Path, files: dict[str, str], gone: Collection[str] = (), pack: str = "none") -> Path:
     """Write the manifest, naming where the bytes came from.
 
     The rows merge onto what the last run recorded. A path `seeds.json` stopped
@@ -344,6 +383,8 @@ def _record(template: Path, project: Path, files: dict[str, str], gone: Collecti
     The origin and the commit are provenance for a reader asking which template
     version a project is on. Neither is read back: a rerun compares hashes, and
     a template moved to another directory still updates the project it seeded.
+    `pack` is read back, by `recorded_pack`, because a rerun that guessed it
+    would seed the wrong capture driver.
     """
     path = project / MANIFEST_REL
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -352,6 +393,7 @@ def _record(template: Path, project: Path, files: dict[str, str], gone: Collecti
         "version": MANIFEST_VERSION,
         "template": {"origin": str(template), "commit": _commit(template)},
         "written_at": _now(),
+        "pack": pack,
         "files": carried | files,
     }
     path.write_text(json.dumps(body, indent=2, sort_keys=True) + "\n")
@@ -1183,9 +1225,14 @@ def main(argv: list[str] | None = None) -> int:
     # a project adopted before the workflow existed has one and not the other.
     # Asking again is one flag; a workflow rendered from a defaulted `none`
     # installs no pnpm and leaves a typescript project's gates unrunnable.
-    needs_pack = not (project / TEAM_DIR / "gates.toml").is_file() or not (
-        project / WORKFLOWS_DIR / "gates.yml"
-    ).is_file()
+    # The manifest joins the two files that are rendered from the pack: a
+    # project adopted before `per_pack` existed has no record of its own, and a
+    # rerun defaulting to `none` would delete the capture driver it runs.
+    needs_pack = (
+        not (project / TEAM_DIR / "gates.toml").is_file()
+        or not (project / WORKFLOWS_DIR / "gates.yml").is_file()
+        or not recorded_pack(project)
+    )
     if args.write and needs_pack and not args.pack:
         # The one answer that cannot be inferred. Guessing python from a
         # `pyproject.toml` gets a project with a `web/` half wrong, and the
@@ -1194,8 +1241,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Choose one of: {', '.join(sorted(PACKS))}", file=sys.stderr)
         return 2
 
+    # A rerun that names no pack takes the one the last adoption recorded, so
+    # the driver `per_pack` seeds stays the driver the project installed.
+    pack = args.pack or recorded_pack(project) or "none"
     answers = {
-        "pack": args.pack or "none",
+        "pack": pack,
         "name": args.name or project.name,
         "summary": args.summary or "Unanswered. One line saying what this project is.",
         "phase": args.phase or default_phase(project),
@@ -1206,13 +1256,13 @@ def main(argv: list[str] | None = None) -> int:
     }
 
     if args.write:
-        files = write(args.template, project)
+        files = write(args.template, project, pack)
         team = seed_team(project, answers)
         flows = seed_workflows(project, answers)
         route = seed_router(args.template, project, answers)
         ignore = seed_gitignore(project)
     else:
-        files = plan(args.template, project)
+        files = plan(args.template, project, pack)
         team = plan_team(project)
         flows = plan_workflows(project)
         route = plan_router(project)

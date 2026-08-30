@@ -80,10 +80,47 @@ matters.
 
 `.agentkit/team.md` says who wins when two roles disagree.
 
+## Where the artboards live, and what writes them
+
+`design/` holds them, and the team layer's `surface` names that same path when
+it is `file`. A screen that already runs is captured from the running app. A
+screen that does not exist yet is drawn. Both land here, so the canvas and a
+pull request see one set of artboards.
+
+A capture writes two files per screen from one page load, and hand-editing
+either is work the next run deletes:
+
+| File | What it is | What it is for |
+|---|---|---|
+| `<Name>.dc.html` | computed styles inline, one style attribute per node, tokens written back as `var()` | what the canvas opens, because a properties panel reads and writes the element's own `style` attribute |
+| `<Name>.classes.html` | the markup with the app's stylesheet carried whole | several times smaller and pixel exact, so a pull request diffs this one and reads the design change |
+
+`design/screens.json` names the screens, the routes and where the app answers.
+The capture points at that URL and starts nothing, so bring the app up first,
+then run the driver this project's pack seeded:
+
+```sh
+uv run --with playwright python design/capture.py   # python
+node design/capture.mjs                             # typescript
+```
+
+Every name in `screens.json` belongs to the capture. Nothing else writes those
+two files: a capture that failed, or that has never run, must not be able to
+move an artboard somebody drew.
+
+**To explore, duplicate an artboard in the canvas and work on the copy.** The
+copy carries the root's provenance stamp, five attributes naming the route, the
+commit, the time, the frame size and a digest of the captured markup. Capture
+again and compare the digest: a different one means the real screen moved while
+you were working, and a commit alone cannot tell you that over a dirty tree.
+
 ## Checking a design change
 
-Look at it, then measure it. Four things a reading misses and a measurement
-catches:
+Look at it, then measure it. A capture measures every box against the live app
+and fails on anything more than a 64th of a pixel out, so on a captured screen
+the reading is what is left to you. On a drawn artboard both halves are yours.
+
+Four things a reading misses and a measurement catches:
 
 - A cell that clips, where the content is wider than the box holding it.
 - A column out of alignment, where the left edges differ by a pixel or two.

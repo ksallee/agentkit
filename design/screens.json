@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "note": "The capture's inputs, and the list of names it owns. `base` is where the app already answers: the capture points at a URL and never starts anything, because building a fixture and starting a dev server is the project's own job and a template that guessed at it would guess wrong. Every entry needs a `name` and a `route`; `title` names the artboard in the canvas and defaults to the name; `width` and `height` override the `viewport` below for one screen. Each name here becomes `<name>.dc.html` and `<name>.classes.html` in this directory, and nothing else may write those two files: a capture that has failed, or has never run, must not be able to move an artboard somebody drew. One route per state, and a route whose page differs between runs writes a different artboard every time.",
+  "base": "http://localhost:5173",
+  "viewport": {
+    "width": 1440,
+    "height": 1000
+  },
+  "screens": [
+    {
+      "name": "Home",
+      "route": "/",
+      "title": "Home"
+    }
+  ]
+}
