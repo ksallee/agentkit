@@ -189,8 +189,21 @@ closes, the pull request scrolls away, the branch is deleted, and the commit
 stays attached to the line. Rule 22's instruction to record the measurement
 rather than the conclusion applies here for the same reason.
 
-Whether a commit carries an agent attribution trailer is a project convention
-and lives in `.agentkit/team.md`. Nothing in these rules depends on one.
+**An agent-written commit carries two attribution trailers, until
+`.agentkit/team.md` says otherwise.**
+
+```
+Claude-Session: https://claude.ai/code/session_<id>
+Co-authored-by: <the model, as it names itself> <noreply@anthropic.com>
+```
+
+A commit made by hand carries neither. No gate reads either line and nothing in
+these rules depends on one. The session line leads from a merged commit back to
+the conversation behind it, after the pull request has scrolled away.
+
+A project writes its own answer under `## Conventions this project settled` in
+`.agentkit/team.md`, and rule 0 gives that layer the field. An empty section
+means the two lines above.
 
 ### 14. Pass issue and pull request bodies to `gh` via `--body-file`
 
