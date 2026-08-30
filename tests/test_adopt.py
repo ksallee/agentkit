@@ -490,17 +490,62 @@ class TestTheDesignSettings:
         adopt.main([str(project), "--write", "--pack", "none", "--template", str(template)])
         assert "`references` is `curated`" in (project / ".agentkit" / "team.md").read_text()
 
-    def test_every_heading_this_repository_uses_is_one_adopt_writes(self, project):
-        """One direction of #26, and it is the direction that broke.
 
-        `.agentkit/team.md` here is hand-written and `team_files()` renders the
-        seeded copy, so a section added to this repository's file and not to the
-        renderer gives every adopted project a team layer missing it. The other
-        direction stays open while the design section lands on two branches.
+def headings(body: str) -> list[str]:
+    """Every `## ` heading, in the order the file states them."""
+    return re.findall(r"^## (.+)$", body, re.M)
+
+
+def section(body: str, heading: str) -> str:
+    """One `## ` section's text, up to the next heading or the end of the file."""
+    return body.split(f"## {heading}\n")[1].split("\n## ")[0]
+
+
+def words(text: str) -> str:
+    """The text with every run of whitespace collapsed, so line wrapping stops mattering."""
+    return " ".join(text.split())
+
+
+class TestThisRepositorysOwnTeamLayer:
+    """`.agentkit/team.md` and `.agentkit/phase.json` here, against what `team_files()` renders.
+
+    Both were written by hand in PR #22 to match the renderer, and nothing
+    checked they still agree (#26). `bin/adopt --write` does not run against
+    this repository, so a test carries the check instead. What the two copies
+    share is the format: the headings, the design table, and the paragraph
+    saying which layer the file is. Every other section here holds an answer
+    the seeded copy leaves open, and those diverge on purpose.
+    """
+
+    def ours(self) -> str:
+        return (ROOT / ".agentkit" / "team.md").read_text()
+
+    def rendered(self) -> str:
+        return adopt.team_files(ANSWERS)["team.md"]
+
+    def test_the_phase_file_is_byte_for_byte_what_adopt_renders(self):
+        """The whole file, because it carries a format and no prose."""
+        ours = (ROOT / ".agentkit" / "phase.json").read_text()
+        answers = {**ANSWERS, "phase": json.loads(ours)["phase"]}
+        assert ours == adopt.team_files(answers)["phase.json"]
+
+    def test_the_headings_are_the_same_list_in_the_same_order(self):
+        """A section on one side and not the other is the divergence #26 named.
+
+        Added here and missing from the renderer, every adopted project gets a
+        team layer without it. Added to the renderer and missing here, this
+        repository is running a team layer a project would not recognise.
         """
-        ours = re.findall(r"^## (.+)$", (ROOT / ".agentkit" / "team.md").read_text(), re.M)
-        seeded = re.findall(r"^## (.+)$", adopt.team_files(ANSWERS)["team.md"], re.M)
-        assert set(ours) - set(seeded) == set()
+        assert headings(self.ours()) == headings(self.rendered())
+
+    def test_the_design_table_is_the_one_adopt_writes(self):
+        """The one block both files carry verbatim, and the one the design skills read."""
+        assert adopt.DESIGN_TABLE in self.ours()
+
+    def test_the_layer_paragraph_says_what_adopt_writes(self):
+        """Ours wraps wider than the renderer, so the comparison is on the words."""
+        heading = "The layer this file is"
+        assert words(section(self.ours(), heading)) == words(section(self.rendered(), heading))
 
 
 def rule_numbers(body: str) -> set[int]:
