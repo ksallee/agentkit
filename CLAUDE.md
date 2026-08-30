@@ -110,8 +110,10 @@ the file that reads it next.
 The rest are named nowhere. Every `SKILL.md` opens with a `description` written
 to be read at load time, so a list here would be that description again, in a
 file with no way to know a skill arrived. It drifted twice in two days, at #31
-and #34. `tests/test_skills.py` asserts the two couplings that stay: a command
-names a skill that exists, and a skill named here exists.
+and #34. `tests/test_skills.py` holds three couplings: this file and the skills
+it names, `bin/adopt`'s outcomes and the table in the `adopt` skill, and a
+description's step count and the body under it. It also asserts this file lists
+no skill it need not, so the removal cannot quietly come back.
 
 Skills read the team layer as data, so it wins on a convention. A skill name
 has no such protection. Two skills of one name both load, and a typed name

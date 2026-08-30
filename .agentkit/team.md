@@ -25,6 +25,14 @@ scaffolding into his own projects and does not work on it, so agentkit has one
 operator and the clause describes a situation that has not arrived. It gets
 asked again at his first review of a pull request here.
 
+**While this is a prototype, that covers everything.** Asked on 2026-08-30
+after a session held two pull requests back for review, on the grounds that
+they carried agentkit's first hard external dependency and a new seeded
+directory: "you can merge everything when done, run done, i'll qa everything on
+main tomorrow. This is a prototype still anyway." So size is not a reason to
+wait, and neither is a new dependency. The gates and the QA are the whole
+condition.
+
 Settled 2026-08-29 in #6, which carries what the alternative was.
 
 ## Who owns what
