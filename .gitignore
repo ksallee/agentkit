@@ -5,3 +5,9 @@ __pycache__/
 
 # A person's own layer, never committed. The team layer in .agentkit/ is.
 .agentkit/local.*
+
+# Agent worktrees, written by the harness under `.claude/`. `skills/` and
+# `commands/` beside them are committed and seeded, so the ignore names the one
+# directory. Without it `git status` is never empty while an agent runs, and
+# `wrap-up` step 1 reads a dirty tree every session.
+.claude/worktrees/
