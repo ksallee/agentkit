@@ -18,7 +18,7 @@ This skill is the method. Six inputs are the project's.
 | The person the work is delivered to | `.agentkit/local.md` | Nobody has been asked yet (rule 0) |
 | Where a finished design lands | `.agentkit/team.md`, `## Design`, `surface` | Ask. Step 8 has three answers and no default |
 | Which reference list is in play | `.agentkit/team.md`, `## Design`, `references` | `curated`, the `design-references` file |
-| The capture, and the screens it opens | `design/capture.py` or `design/capture.mjs`, seeded by `adopt`, and `design/screens.json` | Adopt the scaffolding. Step 6 says what a capture has to do |
+| The capture, and the screens it opens | `design/capture.js` with `design/capture.py` or `design/capture.mjs`, seeded by `adopt`, and `design/screens.json` | Adopt the scaffolding. Step 6 says what the shipped capture asserts and what it leaves to you |
 | The artboard generator, and the components it draws with | `design/build.py` or `design/build.mjs`, seeded by `adopt`; the components are the project's | Adopt the scaffolding. It ships the palette, the scales and one entry point, and no component |
 
 Report an absent input and ask. A guessed constraint reads as a settled one on
@@ -71,7 +71,8 @@ caught this way and none of them by reading the markup.
 
 **Read numbers out of the page instead of looking at it.** A claim about a
 screen is `getBoundingClientRect()` and `scrollWidth` on the elements it is
-about:
+about. These four are yours to run, in a console or a script. The shipped
+capture runs none of them:
 
 | Claim | The assertion |
 |---|---|
@@ -105,10 +106,22 @@ spans, so a family that never paints measures 0.00px against all three and a
 threshold has nothing to protect. Both spans measure off-screen with
 `white-space: pre`, because a line break moves a width for its own reasons.
 
-**The capture is a pattern each project writes for itself.** It needs a dev
-server on a known port, a fixture built fresh each run so a stale one cannot
-make a capture look right, and a route list of one state per screen. One page
-load per route then writes the artboard and the measurements together.
+**The shipped capture asserts a fifth thing: the artboard matches the app.**
+It reloads each written artboard, measures every box on it and compares that
+to the live page, failing the run when one moved further than `1/64` px, the
+grid Chrome lays out on. That catches a stale or wrong artboard. It catches
+none of the four above, because the live page is the truth it compares to: a
+clipped cell, a ragged column and a substituted font all reproduce faithfully
+in an artboard that passes.
+
+**A project is handed a capture and may replace it.** `adopt` seeds `design/`
+with `capture.js`, the contract both drivers evaluate in the page, plus
+`capture.py` for the python pack or `capture.mjs` for the typescript pack, and
+`screens.json` naming the screens and where the app answers. The capture points
+at a URL where the app already answers and starts nothing itself. The driver
+owns `<Name>.dc.html` and `<Name>.classes.html` for every name in
+`screens.json`, so a project that wants different files replaces the driver. A
+second one beside it writes files the driver already owns.
 
 ## 7. A second read against the guide
 
