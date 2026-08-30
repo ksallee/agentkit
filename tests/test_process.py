@@ -160,6 +160,14 @@ class TestTheChecksThatTravel:
         assert done.returncode == 1
         assert "Could not read #10" in done.stdout
 
+    def test_the_reason_the_fetch_failed_reaches_the_report(self, tmp_path):
+        """A token without `issues: read` answers 404, which cost a CI run to find."""
+        payload = pull(issues={}, unreadable={"10": "gh api repos/o/n/issues/10 exited 1: HTTP 404"})
+        done = run(project(tmp_path, AGENTKIT_CONFIG), payload, tmp_path)
+        assert done.returncode == 1
+        assert "HTTP 404" in done.stdout
+        assert "issues: read" in done.stdout
+
     def test_a_subject_with_no_issue_number_fails(self, tmp_path):
         payload = pull(commits=[{"sha": "abc12345", "message": "Add the process job\n", "parents": 1}])
         done = run(project(tmp_path, AGENTKIT_CONFIG), payload, tmp_path)

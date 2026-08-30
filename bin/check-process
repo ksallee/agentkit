@@ -133,6 +133,11 @@ class Pull:
     # absent from the map, which the assignee check reports rather than skips.
     issues: dict[str, list[str]]
 
+    # Issue number to why the fetch failed. A token without `issues: read`
+    # answers 404 to an issue that exists, and the check saying which call
+    # failed is the difference between a permission fix and a hunt.
+    unreadable: dict[str, str]
+
     @property
     def capture(self) -> bool:
         first = first_line(self.body)
@@ -163,6 +168,7 @@ def bundle(payload: dict) -> Pull:
         ),
         files=tuple(payload.get("files") or ()),
         issues={str(k): list(v) for k, v in (payload.get("issues") or {}).items()},
+        unreadable={str(k): str(v) for k, v in (payload.get("unreadable") or {}).items()},
     )
 
 
@@ -175,6 +181,7 @@ def as_payload(pull: Pull) -> dict:
         "commits": [{"sha": c.sha, "message": c.message, "parents": c.parents} for c in pull.commits],
         "files": list(pull.files),
         "issues": pull.issues,
+        "unreadable": pull.unreadable,
     }
 
 
@@ -207,10 +214,12 @@ def fetch(repo: str, number: int) -> Pull:
     body = pull.get("body") or ""
 
     issues: dict[str, list[str]] = {}
+    unreadable: dict[str, str] = {}
     for issue in sorted({int(n) for n in CLOSING.findall(body)}):
         try:
             found = gh(f"repos/{repo}/issues/{issue}")
-        except RuntimeError:
+        except RuntimeError as exc:
+            unreadable[str(issue)] = str(exc)
             continue
         issues[str(issue)] = [a["login"] for a in found.get("assignees") or ()]
 
@@ -224,6 +233,7 @@ def fetch(repo: str, number: int) -> Pull:
         ),
         files=tuple(f["filename"] for f in files),
         issues=issues,
+        unreadable=unreadable,
     )
 
 
@@ -286,7 +296,14 @@ def check_assignee(pull: Pull) -> Check:
         return Check("assignee", "11", FAIL, "The body closes no issue, so there is nobody to check.")
     unknown = [n for n in pull.closes if str(n) not in pull.issues]
     if unknown:
-        return Check("assignee", "11", FAIL, "Could not read " + ", ".join(f"#{n}" for n in unknown))
+        why = [pull.unreadable.get(str(n), "no answer") for n in unknown]
+        return Check(
+            "assignee",
+            "11",
+            FAIL,
+            "Could not read " + ", ".join(f"#{n}" for n in unknown) + "\n" + "\n".join(why)
+            + "\nA 404 on an issue that exists is a token without `issues: read`.",
+        )
     empty = [n for n in pull.closes if not pull.issues[str(n)]]
     if empty:
         return Check("assignee", "11", FAIL, "Nobody is assigned to " + ", ".join(f"#{n}" for n in empty))

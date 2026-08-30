@@ -18,9 +18,14 @@ on:
     types: [opened, edited, reopened, synchronize, labeled, unlabeled]
   push:
 
+# `issues: read` is the assignee check. `repos/{owner}/{repo}/issues/{n}` is a
+# different scope from the pull request that closes it, and without this line
+# the job reports `Could not read #10` on a pull request whose issue is
+# assigned. Measured on the first run of this file, in PR #30.
 permissions:
   contents: read
   pull-requests: read
+  issues: read
 
 concurrency:
   group: process-${{ github.ref }}
