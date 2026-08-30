@@ -149,9 +149,9 @@ writes over anything:
 `.gitignore` gets a block between `# agentkit start` and `# agentkit end`,
 rewritten on every run, with every line outside it left alone. Git reads each
 line of a `.gitignore` on its own, so the block sits beside whatever the
-project already ignores and neither half changes what the other means. Two
-lines go in: `.agentkit/local.*`, which rule 0 requires, and
-`.claude/worktrees/`.
+project already ignores and neither half changes what the other means. Four
+lines go in: `.agentkit/local.*`, which rule 0 requires, `.claude/worktrees/`,
+and the `design/*.dc.html` and `design/*.classes.html` an artboard run writes.
 
 | Outcome | What it means |
 |---|---|

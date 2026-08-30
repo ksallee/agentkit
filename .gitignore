@@ -11,3 +11,11 @@ __pycache__/
 # directory. Without it `git status` is never empty while an agent runs, and
 # `wrap-up` step 1 reads a dirty tree every session.
 .claude/worktrees/
+
+# Generated artboards. `design/capture.py` writes `<Name>.dc.html` and
+# `<Name>.classes.html` per screen, and `design/build.py` writes its own
+# `.dc.html` sheets beside them. `seeds.json` expands `design/` over what is
+# on disk, so one committed here reaches every adopting project and collides
+# with that project's next run. The generators and `screens.json` stay tracked.
+design/*.dc.html
+design/*.classes.html

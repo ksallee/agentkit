@@ -1107,6 +1107,36 @@ class TestTheIgnoreFile:
         assert ".agentkit/local.*" in done.stdout
         assert ".claude/worktrees/" in done.stdout
 
+    def test_git_ignores_a_generated_artboard(self, template, project):
+        """A project runs the generators it was seeded with, and a run writes into `design/`.
+
+        The output is a file the project never wrote, so it stays out of the
+        index and the generators beside it stay tracked (#89).
+        """
+        import subprocess
+
+        adopt.main([str(project), "--write", "--pack", "none", "--template", str(template)])
+        env = {"PATH": "/usr/bin:/bin", "HOME": str(project)}
+        subprocess.run(["git", "-C", str(project), "init"], check=True, capture_output=True, env=env)
+        (project / "design").mkdir(exist_ok=True)
+        written = ("Home.dc.html", "Home.classes.html", "build.py", "screens.json")
+        for name in written:
+            (project / "design" / name).write_text("x\n")
+
+        def ignored(*rels):
+            return subprocess.run(
+                ["git", "-C", str(project), "check-ignore", *rels],
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+
+        done = ignored("design/Home.dc.html", "design/Home.classes.html")
+        assert done.returncode == 0
+        assert done.stdout.split() == ["design/Home.dc.html", "design/Home.classes.html"]
+        kept = ignored("design/build.py", "design/screens.json")
+        assert kept.returncode == 1, kept.stdout
+
 
 class TestAPersonalSkillOfASeededName:
     """The collision `adopt` reports and does not act on (#50).

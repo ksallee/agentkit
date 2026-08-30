@@ -205,3 +205,21 @@ class TestTheGenerator:
         for pack in ("python", "typescript"):
             seeded = {rel for rel, _ in adopt.seeds(ROOT, pack)}
             assert not [r for r in seeded if r.endswith((".dc.html", ".classes.html", "canvas.json"))]
+
+    def test_this_repository_ignores_a_generated_artboard(self):
+        """The guard before the one above. `seeds.json` expands over the disk, so an
+        artboard that never reaches the index is still seeded, and the ignore is what
+        keeps a run in this checkout from putting one there (#89).
+        """
+        here = subprocess.run(
+            ["git", "-C", str(ROOT), "check-ignore", "design/Home.dc.html", "design/Home.classes.html"],
+            capture_output=True,
+            text=True,
+        )
+        assert here.returncode == 0, here.stdout
+        kept = subprocess.run(
+            ["git", "-C", str(ROOT), "check-ignore", "design/build.py", "design/screens.json"],
+            capture_output=True,
+            text=True,
+        )
+        assert kept.returncode == 1, kept.stdout

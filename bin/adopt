@@ -958,14 +958,23 @@ GITIGNORE_REL = ".gitignore"
 GITIGNORE_START = "# agentkit start"
 GITIGNORE_END = "# agentkit end"
 
-# Two lines, and a language pack owns anything further. `.agentkit/local.*` is
+# Four lines, and a language pack owns anything further. `.agentkit/local.*` is
 # what rule 0 requires: it calls the personal layer gitignored, and a project
 # seeded without the line commits one person's taste to a shared branch.
 # `.claude/worktrees/` is harness state every project running agents produces,
 # and without it `git status` reports a dirty tree for as long as an agent is
 # working. `skills/` and `commands/` beside it are committed, so the ignore
-# names the one directory.
-GITIGNORE_LINES = (".agentkit/local.*", ".claude/worktrees/")
+# names the one directory. The `design/` pair covers the artboards
+# `design/capture.py` and `design/build.py` write, one `<Name>.dc.html` and one
+# `<Name>.classes.html` per screen. Those are output, and a project that never
+# wanted the file in its index should not depend on a test to find it there.
+# The generators and `screens.json` beside them stay tracked.
+GITIGNORE_LINES = (
+    ".agentkit/local.*",
+    ".claude/worktrees/",
+    "design/*.dc.html",
+    "design/*.classes.html",
+)
 
 
 def gitignore_block() -> str:

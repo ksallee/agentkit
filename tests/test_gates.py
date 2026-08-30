@@ -83,6 +83,25 @@ class TestDeclaration:
         for gate in DECLARED:
             assert set(gate) <= allowed, f"{gate['name']} declares {set(gate) - allowed}"
 
+    def test_every_directory_holding_python_is_named_by_a_gate(self):
+        """A directory no command names is checked by nothing, which is where `design/` sat.
+
+        The assertion is a property. Which gates are declared stays the
+        declaration's business, and a new directory of python joins one of the
+        commands or fails here.
+        """
+        tracked = subprocess.run(
+            ["git", "ls-files", "*.py"], capture_output=True, text=True, cwd=ROOT
+        ).stdout.split()
+        holding = {Path(rel).parts[0] for rel in tracked if "/" in rel}
+        named = {
+            part
+            for gate in DECLARED
+            for word in gate["command"].split()
+            for part in Path(word).parts
+        }
+        assert holding <= named, sorted(holding - named)
+
     def test_no_tracked_prose_restates_a_gate_command(self):
         """Rule 17 names this file and no command."""
         tracked = subprocess.run(

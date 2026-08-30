@@ -28,7 +28,7 @@ command = "bin/check-probes"
 
 [[gate]]
 name = "lint"
-command = "uvx ruff check bin probes tests"
+command = "uvx ruff check bin design probes tests"
 
 # The interpreter is named here rather than in a `.python-version` file.
 # That file is read by pyenv as well as uv, and the two disagree: uv accepts a
