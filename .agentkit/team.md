@@ -62,3 +62,33 @@ Co-authored-by: Claude Opus 5 (1M context) <noreply@anthropic.com>
 The agent writes both, and a commit made by hand carries neither. The session
 line is the one path from a merged commit back to the conversation behind it
 once the pull request has scrolled away. No gate checks either line.
+
+## Design
+
+Two settings the design skills read. Rule 0 puts them here because two people
+open the same deliverable and cite the same references.
+
+| Setting | Values | Meaning |
+|---|---|---|
+| surface | canvas, file, none | where a finished design lands |
+| references | curated, refero | where `design-references` gets its list |
+
+**agentkit: surface `none`, references `curated`.** This repository ships
+scaffolding and draws no screens, so `design-process` step 8 has nothing to
+publish and steps 1 to 7 apply to whatever a project draws with them. #25 is
+where the skills get exercised in a project that has screens.
+
+`canvas` publishes the artboards with click-to-edit and PNG or PDF export,
+which needs a paid plan and stores the content on somebody else's
+infrastructure. `file` keeps them at a path in the repository, named after the
+value: `file, design/`. `none` publishes nothing. `curated` is the list in
+`design-references` and needs no account. `refero` adds a catalogue of design
+systems queried through a third-party MCP server, and it stays off until a
+project turns it on.
+
+A skill reads this section as prose. No machine does, and no gate could: the
+one consumer is a person or an agent halfway through a design task, there is
+nothing about a pull request that a wrong answer here would break, and a
+checker cannot tell a project that chose `none` from one nobody asked. A
+project whose team file has no `## Design` section has been asked nothing, and
+the skill says so instead of picking a value.
