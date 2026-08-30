@@ -31,7 +31,7 @@ DECLARED = tomllib.loads(GATES.read_text(encoding="utf-8"))["gate"]
 
 # The executables a project inherits. `bin/adopt` is this template's own tool
 # and is deliberately absent.
-SEEDED_BIN = ("bin/verify", "bin/check-style", "bin/check-probes")
+SEEDED_BIN = ("bin/verify", "bin/check-style", "bin/check-probes", "bin/surface")
 
 
 def load(path: Path):
