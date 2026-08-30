@@ -740,8 +740,14 @@ def team_files(answers: dict[str, str]) -> dict[str, str]:
     reads as a bug: an agent fills it and a person deletes it, and neither
     result is the unasked question rule 0 has to be able to tell from an
     answered one (#145).
+
+    `## Design` carries the surface when `--surface` answered it, and says
+    nobody has picked one when it did not. The skill asks for the surface in
+    the same call as the pack, so a team file rendering it as unanswered loses
+    an answer given thirty seconds earlier (#162).
     """
     pack = answers["pack"]
+    surface = answers["surface"]
     # `command` is the key the runner reads. A gate that names no `cwd` omits the
     # line, so the seeded file carries nothing a reader has to interpret.
     gates = "\n".join(
@@ -775,7 +781,11 @@ def team_files(answers: dict[str, str]) -> dict[str, str]:
             "What a reader would get wrong without being told. Empty is honest\n"
             "until something has actually been settled.\n\n"
             "## Design\n\n" + DESIGN_TABLE + "\n"
-            "`surface` waits until somebody picks one.\n"
+            + (
+                f"**{answers['name']}: surface `{surface}`.**\n"
+                if surface
+                else "`surface` waits until somebody picks one.\n"
+            )
         ),
     }
 
@@ -1735,6 +1745,8 @@ def report(
     ignore: Outcome,
     skills: tuple[Path | None, list[str]],
     dry: bool,
+    pack: str,
+    pack_from: str,
     command: list[Outcome] = (),
     command_problem: str = "",
     labels: tuple[list[Outcome], str] | None = None,
@@ -1744,8 +1756,14 @@ def report(
     A second file nobody was told about is a file nobody finds, so a kept line
     carries the sidecar name. The summary states the kept count on its own,
     because that is the number a first adoption turns on.
+
+    The pack line is here because every file list below it is one pack's, and
+    `per_pack` gives each pack a set no other pack has. A plan naming no pack
+    is approved as though it were every pack's, and a write under another one
+    lands a different set (#164).
     """
     print(f"\nproject  {project}")
+    print(f"pack     {pack}, {pack_from}. The file lists below are rendered from it.")
     for row in files:
         line = f"  {row.status:<9} {row.rel}"
         if row.sidecar:
@@ -1871,6 +1889,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--phase", choices=("shaping", "building"), help="Defaults by whether the target has a commit.")
     ap.add_argument("--merge", default="", help="Who reviews and who merges.")
     ap.add_argument(
+        "--surface",
+        default="",
+        help="Where a finished design lands: canvas, none, or file and a path, as in 'file, design/'.",
+    )
+    ap.add_argument(
         "--no-gates",
         action="store_true",
         help="Skip the gate run a first write ends with, and the install before it.",
@@ -1902,10 +1925,11 @@ def main(argv: list[str] | None = None) -> int:
     # The manifest joins the two files that are rendered from the pack: a
     # project adopted before `per_pack` existed has no record of its own, and a
     # rerun defaulting to `none` would delete the capture driver it runs.
+    recorded = recorded_pack(project)
     needs_pack = (
         not (project / TEAM_DIR / "gates.toml").is_file()
         or not (project / WORKFLOWS_DIR / "gates.yml").is_file()
-        or not recorded_pack(project)
+        or not recorded
     )
     if args.write and needs_pack and not args.pack:
         # The one answer that cannot be inferred. Guessing python from a
@@ -1917,13 +1941,19 @@ def main(argv: list[str] | None = None) -> int:
 
     # A rerun that names no pack takes the one the last adoption recorded, so
     # the driver `per_pack` seeds stays the driver the project installed.
-    pack = args.pack or recorded_pack(project) or "none"
+    pack = args.pack or recorded or "none"
+    # Which of the three the report names, so an operator reading a plan can
+    # tell a pack somebody chose from one nothing asked about.
+    pack_from = "given with --pack" if args.pack else "recorded by the last adoption" if recorded else "the default"
     answers = {
         "pack": pack,
         "name": args.name or project.name,
         "summary": args.summary or "Unanswered. One line saying what this project is.",
         "phase": args.phase or default_phase(project),
         "merge": args.merge or "The author does not merge their own pull request.",
+        # Empty leaves the question open in `team.md`. The other answers each
+        # have a default worth writing, and a surface nobody picked has none.
+        "surface": args.surface,
     }
 
     # Read before anything is written, because the write creates the manifest
@@ -1964,6 +1994,8 @@ def main(argv: list[str] | None = None) -> int:
         ignore,
         skills,
         dry=not args.write,
+        pack=pack,
+        pack_from=pack_from,
         command=command,
         command_problem=command_problem,
         labels=labels,
