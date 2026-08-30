@@ -1,16 +1,16 @@
 ---
 name: motion
-description: A motion budget with the numbers and the sources: durations, easings, what never moves, reduced motion. The numbers are defaults a project edits in place. Use when an artboard, a component or a screen change involves a transition, an animation, a hover state, or a keyboard-triggered surface. Sources checked 2026-08-28.
+description: A motion budget with the numbers and the sources: durations, easings, what never moves, reduced motion. The numbers are defaults a project edits in place. Use when an artboard, a component or a screen change involves a transition, an animation, a hover state, or a keyboard-triggered surface.
 ---
 
 # Motion
 
 **Every number here is a default, and every one carries the source it came
-from, checked 2026-08-28.** The sources publish these for interfaces in
-general. A budget is a decision about one product, so a project that wants a
-different figure edits the line here and writes the reason beside it, keeping
-the source of whatever it replaced. This file is the one place the numbers
-live; a second copy in a design guide is the copy that drifts.
+from.** The sources publish these for interfaces in general. A budget is a
+decision about one product, so a project that wants a different figure edits
+the line here and writes the reason beside it, keeping the source of whatever
+it replaced. This file is the one place the numbers live; a second copy in a
+design guide is the copy that drifts.
 
 ## Frequency decides whether anything moves at all
 

@@ -81,6 +81,15 @@ RULES: tuple[Rule, ...] = (
         "use a plain verb, or delete the adjective",
     ),
     (
+        "check date in a description",
+        re.compile(
+            r"^description:(?=.*\b(?:checked|verified|reviewed|updated|refreshed|as of)"
+            r"\s+\d{4}-\d{2}-\d{2})",
+            re.I,
+        ),
+        "delete it, or put a gate behind the claim",
+    ),
+    (
         "vague attribution",
         re.compile(r"\b(?:studies show|experts agree|it is widely (?:considered|believed))\b", re.I),
         "name the source or give the measurement",

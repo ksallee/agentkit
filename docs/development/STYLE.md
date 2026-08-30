@@ -24,6 +24,7 @@ resolved from elsewhere.**
 | "It's important to note", "It's worth noting", "Generally speaking", "In many cases", "At its core", "Simply put" | Hedging preamble. Adds tokens, adds nothing. | Delete it and start with the claim. |
 | leverage, delve, utilize, robust, seamless, powerful, comprehensive, cutting-edge, best-in-class | Marketing vocabulary. | use, dig into, use. For the adjectives: delete them. |
 | "studies show", "it is widely considered", "experts agree" | Vague attribution. Unfalsifiable. | Name the source, or give the measurement. |
+| A check date in a skill `description`: "checked YYYY-MM-DD", "as of YYYY-MM-DD" | It reads as certification and certifies nothing. The refresh #45 measured was due four times and ran zero times. | Delete it. Where a machine can check the fact, run the check in a gate. |
 | A closing sentence that states the moral | "And that is why grouping matters." The reader got there. | Stop at the last fact. |
 | Three-item lists written for rhythm | "fast, simple, and reliable" | Say the one that is true. |
 
