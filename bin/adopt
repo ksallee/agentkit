@@ -461,10 +461,19 @@ ROUTER = """# {name}
 
 ---
 
-# Rules: these are not optional
+# Rules: every task, every session, human or AI
 
-Every task, every session, human or AI. The reasoning behind each is in
-[`docs/development/WORKFLOW.md`](docs/development/WORKFLOW.md).
+Breaking one costs two different things. Rules 11, 12, 13, 15, 16, 17, 19 and
+24 fail a check: `bin/verify` over `.agentkit/gates.toml`, `bin/check-style`,
+and `bin/check-process` over the pull request, its labels and its commits.
+Rules 0, 9, 10, 14, 18 and 20 to 23 reach a reader and nothing else, so
+skipping one stays invisible until somebody needs what it would have left
+behind: the issue that predates the branch, the preference written into the
+file that reads it next, the pull request body that says what was verified.
+
+Nothing here compels an agent, and a session that skipped either kind has not
+done the work. [`docs/development/WORKFLOW.md`](docs/development/WORKFLOW.md)
+names which check reads which rule, and carries the reasoning behind each.
 
 ## 0. Read the layers, in order, and let the right one win
 
