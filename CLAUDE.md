@@ -87,7 +87,10 @@ Loaded on demand from `.claude/skills/`, committed, available the moment
 somebody clones. No plugin, no install step.
 
 **`adopt`** seeds this scaffolding into a project and updates it later.
-**`pick-work`**, as `/work`, says what to do next.
+**`pick-work`**, as `/work`, says what to do next. **`wrap-up`**, as `/done`,
+ends a session: the tree is clean, the prose gets read against STYLE.md, and
+every preference the session stated is written into the file that reads it
+next.
 
 The team layer is data that skills read. Skill precedence doesn't exist: two
 skills of one name both load.
