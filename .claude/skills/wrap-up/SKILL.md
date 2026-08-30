@@ -56,10 +56,16 @@ the recap says where. And a stale worktree's files compared against today's
 merged branch can outlive its merge on GitHub: `gh pr merge --delete-branch`
 fails on its local step when it is run from a worktree, and the remote deletion
 is what it never reaches. Nothing else looks for them, and they accumulate. The
-first run of this check in agentkit, on 2026-08-30, found sixteen.
+first full run of this check in agentkit, on 2026-08-30, found twenty-eight.
+
+`--limit` is the whole answer here and it is easy to get wrong. The same check
+run at `--limit 20` on the same afternoon reported sixteen, because it reads
+that many merged pull requests and not that many branches. Set it past the
+repository's merged count, and treat a number equal to the limit as a truncated
+answer rather than a total.
 
 ```sh
-gh pr list --state merged --limit 20 --json number,headRefName \
+gh pr list --state merged --limit 200 --json number,headRefName \
   -q '.[] | .headRefName' | while read -r b; do
   git ls-remote --exit-code --heads origin "$b" >/dev/null 2>&1 && echo "$b"
 done
