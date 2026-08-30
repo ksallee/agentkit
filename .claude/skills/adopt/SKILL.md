@@ -16,7 +16,10 @@ here", "set up the repo in ~/dev/thing", "update the scaffolding". Two
 phrasings of one intent can land on different paths and nothing downstream
 reports that they did.
 
-Say back two things and wait for a yes:
+Say back two things. They ride in the message that carries the first
+`AskUserQuestion` call, as a statement the operator corrects rather than a gate
+they clear first. Waiting for a separate yes costs a round trip and buys
+nothing, because nothing is written until the plan is approved:
 
 - **The directory**, as an absolute path. "Here" is the session's working
   directory, and a session started somewhere else adopts somewhere else.
@@ -53,15 +56,29 @@ and defaults to `shaping` when there is no commit.
 
 ## The five answers
 
-Ask all five in one pass. Four carry a default worth accepting.
+Four carry a default worth accepting.
 
-**Ask in plain words, and put the options inside the question.** One message,
-five questions, each answerable without opening a file: what the project is
-called, one line on what it does, which gates it runs and what else that
-decides, who merges, and whether it is shaping or building. Name the legal
-values inline every time. A question that sends the operator off to a skill to
-find out what the answers are has not been asked yet, and #128 is four rounds
-of exactly that.
+**Every question carries its options and a recommendation.** That is the
+property, and it is the one that failed in #128: four rounds there were spent
+on questions the operator could not answer without going to read a skill first.
+Round count was the symptom. A question naming its legal values and saying
+which one you would take costs the operator one word back.
+
+**Use `AskUserQuestion`, batched.** Stated 2026-08-30: "what I'd like is to use
+claude question system, with all questions in one go, that would be the
+simplest." It renders each question with its options as choices, so the options
+are in front of the operator instead of in a paragraph they have to read back.
+
+**It takes four questions per call, so the set is two calls.** Put the four
+with a fixed range in the first: the pack, who merges, shaping or building, and
+`surface`. Each option carries what it costs in its `description`, and the one
+you would take goes first, labelled `(Recommended)`. The second call takes the
+name and the summary, which are free text: give the default as the first option
+and let the operator type over it, since `AskUserQuestion` always offers
+`Other`.
+
+Asking in bulk is not what went wrong in #128, and batching does not bring it
+back. What brings it back is a question with no options in it.
 
 | Answer | Flag | Default |
 |---|---|---|
