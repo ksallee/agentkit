@@ -571,6 +571,19 @@ class TestTheRouter:
         assert seeded == shipped
         assert {0, 1, 8, 9, 20, 24} <= seeded
 
+    def test_the_opening_agrees_with_this_repositorys_own(self, template):
+        """Which rules a check catches and which a reader carries, stated in two files.
+
+        A project gets that split from the generated router and nowhere else,
+        so a correction made here and skipped in `CLAUDE.md` leaves the two
+        describing different mechanisms (#42).
+        """
+
+        def opening(body: str) -> str:
+            return body.split("# Rules:", 1)[1].split("\n## ", 1)[0]
+
+        assert opening(adopt.router(template, ANSWERS)) == opening((ROOT / "CLAUDE.md").read_text())
+
     def test_rules_1_to_8_carry_no_constraint_and_nothing_to_fill_in(self, template):
         """An empty heading invites a guess and a question list invites an answer."""
         section = adopt.router(template, ANSWERS).split("## 1 to 8")[1].split("\n## ")[0]
