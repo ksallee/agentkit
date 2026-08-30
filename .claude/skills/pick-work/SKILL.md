@@ -1,6 +1,6 @@
 ---
 name: pick-work
-description: Summarise the open issues and help choose what to do next, grouped by what each one needs in order to be verified. Use when someone asks what to work on, says they have no particular task, or wants to know what is pending.
+description: What is worth doing next, from this project's own board. Covers open pull requests before new work, issue bodies in full, the project's `effort:` and `area:` labels, how many issues can safely run at once, and a proposal nothing starts without a yes on. Use when someone asks what to work on, says they have no particular task, or wants to know what is pending.
 ---
 
 # Picking work
