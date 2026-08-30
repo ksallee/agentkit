@@ -1,0 +1,106 @@
+# Rule 9's probe of the URLs `.claude/skills/` cites, run on a schedule rather
+# than as a gate. A gate would put every pull request behind 28 third-party
+# hosts being reachable, so it would fail for reasons that have nothing to do
+# with the change under review, and that is how a check teaches people to
+# ignore it. A link that rotted last month is not urgent.
+#
+# Weekly, because the probe reads what somebody else publishes and a rotted
+# link stays rotted. Weekly bounds how stale the answer gets at seven days,
+# costs 31 requests a week, and leaves a run to point at when a reference stops
+# working. Daily would buy six days on a fact that changes once a year. Minute
+# 17 rather than 0: GitHub queues every workflow scheduled on the hour
+# together, and a run at a busy minute waits longest.
+#
+# GitHub disables a scheduled workflow after 60 days with no commits to the
+# default branch. `workflow_dispatch` is here so a person can run the same
+# check without waiting for Monday, and re-enabling is a button in the Actions
+# tab.
+#
+# `bin/adopt` renders this repository's other two workflows into a project and
+# does not render this one, because `seeds.json` seeds no `probes/` and the
+# probe this file runs would be missing. #71 carries that decision.
+
+name: Sources
+
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+# The job files an issue when a source is dead. Nothing else here writes.
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: sources
+  cancel-in-progress: false
+
+jobs:
+  cited-urls:
+    name: Every URL a skill cites
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      # No uv and no install. Rule 9 makes a probe standard library only, and
+      # the runner's python3 is what proves that property on every run.
+      #
+      # The exit status is captured instead of failing the step, so the summary
+      # and the issue below both run. `set +e` because the default shell exits
+      # on the first non-zero command.
+      - id: probe
+        run: |
+          set +e
+          python3 probes/skill_sources.py > "$RUNNER_TEMP/sources.txt" 2>&1
+          echo "dead=$?" >> "$GITHUB_OUTPUT"
+          cat "$RUNNER_TEMP/sources.txt"
+
+      # A URL that redirects to a domain root, answers 403 to a script, or
+      # moved without the skill knowing is reported and does not fail. The run
+      # summary is where that report is read, and it is written whatever the
+      # verdicts were.
+      - name: The full output, in the run summary
+        if: always()
+        run: |
+          {
+            echo '## Sources cited by .claude/skills/'
+            echo '```'
+            cat "$RUNNER_TEMP/sources.txt"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # One issue, reopened by a comment on the next failure rather than filed
+      # again. A weekly job that files a fresh issue every Monday buries the
+      # board in eight copies of one dead link.
+      - name: File the dead sources
+        if: steps.probe.outputs.dead != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: A source a skill cites is dead
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          {
+            echo "\`probes/skill_sources.py\` found a dead source on $(date -u +%F)."
+            echo
+            echo "Run: $RUN"
+            echo
+            echo "Fix the URL where it is cited, or drop the reference. Rerun the"
+            echo "probe by hand with \`python3 probes/skill_sources.py\`."
+            echo
+            echo '```'
+            cat "$RUNNER_TEMP/sources.txt"
+            echo '```'
+          } > "$RUNNER_TEMP/body.md"
+
+          open=$(gh issue list --state open --search "$TITLE in:title" \
+            --json number,title \
+            --jq '[.[] | select(.title == env.TITLE) | .number] | first // ""')
+          if [ -n "$open" ]; then
+            gh issue comment "$open" --body-file "$RUNNER_TEMP/body.md"
+          else
+            gh issue create --title "$TITLE" \
+              --label "area: skills" --label bug \
+              --body-file "$RUNNER_TEMP/body.md"
+          fi
