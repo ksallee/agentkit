@@ -71,8 +71,9 @@ an engineer asks about all six while building:
 | Copy and other confirmations | A label change, a toast, or neither, and how long it stands |
 | Hover | A colour change, or something that moves |
 
-A call recorded nowhere gets answered differently by each screen. `css-now`
-carries the browser support for the features these need.
+A call recorded nowhere gets answered differently by each screen.
+`design-references` names the guides carrying browser support for the features
+these need.
 
 ## Sources
 
