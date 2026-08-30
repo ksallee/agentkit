@@ -241,7 +241,9 @@ def as_payload(pull: Pull) -> dict:
 
 
 def gh(path: str, paginate: bool = False) -> object:
-    """One `gh api` call. Measured in probes/gh_pull_request.py."""
+    """One `gh api` call. Measured in `probes/gh_pull_request.py` in the agentkit
+    checkout, which `seeds.json` seeds nowhere, so a project reads the shape here
+    and runs the probe there."""
     args = ["gh", "api", path] + (["--paginate"] if paginate else [])
     try:
         done = subprocess.run(args, capture_output=True, text=True)

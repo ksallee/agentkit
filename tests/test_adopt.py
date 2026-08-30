@@ -261,6 +261,35 @@ class TestTheSeededProbe:
         declared = json.loads((ROOT / "seeds.json").read_text())
         assert "probes/skill_sources.py" in declared["note"]
 
+    def test_every_seeded_file_citing_an_unseeded_probe_names_the_checkout(self):
+        """#159. A citation a project cannot follow is a path to a file it does not have.
+
+        #124 settled the wording: name the agentkit checkout, and say the probe
+        is seeded nowhere, so a reader knows the result travels and the probe
+        does not. That fix went into one markdown file and left the same
+        sentence in `bin/check-process`, which every project also receives.
+        Reading every seeded file rather than the markdown catches the second.
+        """
+        cited = re.compile(r"probes/[a-z0-9_]+\.py")
+        offenders = []
+        for pack in adopt.PACKS:
+            for rel, path in adopt.seeds(ROOT, pack):
+                seeded = {r for r, _ in adopt.seeds(ROOT, pack)}
+                try:
+                    lines = path.read_text(encoding="utf-8").splitlines()
+                except (UnicodeDecodeError, OSError):
+                    continue
+                for n, line in enumerate(lines):
+                    for probe in cited.findall(line):
+                        if probe in seeded:
+                            continue
+                        # Normalised, because a citation wraps and the phrase
+                        # then carries the next line's indentation in the middle.
+                        window = " ".join(" ".join(lines[max(0, n - 2) : n + 3]).split())
+                        if "agentkit checkout" not in window:
+                            offenders.append(f"{pack}: {rel}:{n + 1} cites {probe}")
+        assert not offenders, "\n".join(sorted(set(offenders)))
+
     def test_every_pack_gates_the_probe(self):
         """A seeded probe nothing runs is rule 9's dead rule with a file attached.
 
