@@ -25,6 +25,7 @@ Private. Built for the way we work rather than for adoption by strangers.
 git clone git@github.com:ksallee/agentkit.git
 python3 agentkit/bin/adopt /path/to/your/project              # the plan
 python3 agentkit/bin/adopt /path/to/your/project --write --pack python
+python3 agentkit/bin/adopt /path/to/your/project --check      # how far behind
 ```
 
 The plan is the default and writes nothing, because the target is your
@@ -33,6 +34,14 @@ in `.agentkit/manifest.json`, and seeds `.agentkit/gates.toml`, `team.md` and
 `phase.json` once. Rerun it to update: a file you have not touched is rewritten,
 a file you have edited is replaced and yours is kept beside it as `.local`, with
 both names on the line.
+
+`--check` writes nothing and says whether a rerun is worth running: how many
+commits agentkit has taken since you adopted it, which of the files you copy
+changed, and which of those you have edited. It exits 1 when you are behind, so
+it runs in your CI, and 0 when agentkit moved without touching anything you
+copy. Your manifest records the sha it measures from, marked `-dirty` when the
+checkout you adopted from had uncommitted changes, because those files are in
+no commit anybody can look up.
 
 A write also renders your `CLAUDE.md` from the answers you gave: the layers, the
 role guides, the rules that travel, and your own 1 to 8 held open. A project
