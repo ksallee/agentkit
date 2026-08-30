@@ -460,7 +460,8 @@ def plan_team(project: Path) -> list[Outcome]:
 # stay visible, because a router jumping from 0 to 9 reads as a set somebody
 # deleted from. Anything more invites an answer: an empty heading invites a
 # guess, and a list of the questions invites an agent to answer them on day
-# one. `shape` (#23) asks, and it rewrites this section.
+# one. The note names `shape`, which asks the operator and rewrites this
+# section, so a reader of a seeded router knows what fills it.
 ROUTER = """# {name}
 
 {summary}
@@ -502,9 +503,12 @@ absence means nobody has been asked yet.
 
 ## 1 to 8 are yours
 
-Your storage model, your precedence, what this project refuses to build.
-Nothing is settled yet, so nothing is written here. The numbers stay open so
-your rules and the ones below never collide in a citation.
+Your storage model, your precedence, what this project refuses to build. The
+numbers stay open so your rules and the ones below never collide in a citation.
+
+Nothing is written here until somebody settles it. `shape` asks the questions,
+files them where the reasoning is kept, and writes the answers back into this
+section. A guess here reads as settled to every session after it.
 
 ## 9. Probe an external interface, never assume it
 

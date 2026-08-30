@@ -631,10 +631,51 @@ class TestTheRouter:
 
     def test_rules_1_to_8_carry_no_constraint_and_nothing_to_fill_in(self, template):
         """An empty heading invites a guess and a question list invites an answer."""
-        section = adopt.router(template, ANSWERS).split("## 1 to 8")[1].split("\n## ")[0]
+        section = self.held_open(adopt.router(template, ANSWERS))
         assert "?" not in section
         assert "- " not in section
         assert "TODO" not in section
+
+    def test_the_numbers_held_open_name_the_skill_that_fills_them(self, template):
+        """A held-open section pointing at nothing gets filled by whoever reads it.
+
+        The note is the whole defence: an agent that finds eight numbers, no
+        content and no instruction writes what the codebase implies, and a
+        guess there reads as settled to every session after it.
+        """
+        assert "`shape`" in self.held_open(adopt.router(template, ANSWERS))
+
+    def test_the_skill_it_names_is_one_the_project_gets(self):
+        """A router naming a skill `seeds.json` skips is a broken instruction."""
+        seeded = {rel for rel, _ in adopt.seeds(ROOT)}
+        assert ".claude/skills/shape/SKILL.md" in seeded
+
+    def test_a_rerun_leaves_a_shaped_section_alone(self, template, project):
+        """`shape` and `adopt` write into one file and never over each other (#23).
+
+        `shape` replaces what sits between the held-open heading and rule 9.
+        The router carries no manifest row and `seed_router` returns on any
+        file that exists, so an update of the scaffolding reports `present` and
+        writes nothing. The rule survives because nothing here is claimed by
+        the manifest, which is the only reason it survives.
+        """
+        adopt.main([str(project), "--write", "--pack", "none", "--template", str(template)])
+        shaped = re.sub(
+            r"## 1 to 8 are yours.*?(?=\n## 9\.)",
+            "## 1. Every hour on a screen was measured\n\n"
+            "A number this project inferred says so where it is shown.\n",
+            (project / "CLAUDE.md").read_text(),
+            flags=re.S,
+        )
+        assert "## 1. Every hour" in shaped
+        (project / "CLAUDE.md").write_text(shaped)
+        adopt.main([str(project), "--write", "--pack", "none", "--template", str(template)])
+        assert (project / "CLAUDE.md").read_text() == shaped
+
+    @staticmethod
+    def held_open(body: str) -> str:
+        """The numbers a project fills, from the heading to the next rule."""
+        return body.split("## 1 to 8")[1].split("\n## ")[0]
 
 
 class TestTheRoleTable:
