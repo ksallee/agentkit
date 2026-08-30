@@ -25,7 +25,7 @@ Say back two things and wait for a yes:
   files. Absent means nothing here has been seeded.
 
 `bin/adopt` reads the manifest for itself, so a misreading costs what the
-session does around the tool. A first adoption needs all six answers before
+session does around the tool. A first adoption needs all five answers before
 anything is written. An update has them in `.agentkit/team.md` already, and
 what it needs read back is which files a rerun replaces and which it keeps. The
 wrong directory means every one of those questions was asked about the wrong
@@ -51,9 +51,9 @@ empty. Say which state the target is in, and where it has files and no commits,
 say what is in the tree before writing over it. `--phase` reads the same fact
 and defaults to `shaping` when there is no commit.
 
-## The six answers
+## The five answers
 
-Ask all six in one pass. Five carry a default worth accepting.
+Ask all five in one pass. Four carry a default worth accepting.
 
 | Answer | Flag | Default |
 |---|---|---|
@@ -62,7 +62,6 @@ Ask all six in one pass. Five carry a default worth accepting.
 | One line saying what it is | `--summary` | Left unanswered in `team.md` and in `CLAUDE.md`, marked as such. |
 | Who reviews and who merges | `--merge` | The author does not merge their own pull request. |
 | Shaping or building | `--phase` | `building` when the target has a commit, `shaping` when it does not. |
-| Where the design pipeline gets references | `--references curated\|refero` | `curated`. |
 
 **The pack has no default and adopt refuses to write the team layer without
 it.** A gate list naming a command the project does not run makes rule 17
@@ -119,16 +118,9 @@ The name and the summary reach two files: `.agentkit/team.md` and the project's
 `CLAUDE.md`, which an agent loads every turn. A summary nobody gave leaves both
 saying so.
 
-### References, and why it is opt in
+### The one design setting
 
-`refero` means the design pipeline queries refero.design, a third-party
-service, for its reference list. `curated` means it reads a list this project
-maintains. Say that plainly and let the operator decline: the whole pipeline
-works on `curated`, and a project can switch later by editing one row in
-`.agentkit/team.md`. Adopting scaffolding is not the moment to sign somebody up
-to an outside service by default.
-
-The other row in that table, `surface`, says where a finished design lands
+`surface` says where a finished design lands
 (`canvas`, `file` or `none`). `adopt` seeds it unanswered, so somebody picks
 one before the design skills run. Report it with its three values every time it
 comes up. A setting named as unanswered without its options tells the reader to
@@ -321,7 +313,7 @@ phase A, where the operator had to ask four times for something the report
 should have carried.
 
 **Name a setting's values whenever the setting is named.** `surface` above is
-the standing case, and `references` and the pack are the same shape.
+the standing case, and the pack is the same shape.
 
 **Name the directory every next step runs in.** `shape` runs in the project.
 Run it from the agentkit checkout and it files the project's constraint

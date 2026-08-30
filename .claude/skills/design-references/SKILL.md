@@ -103,22 +103,16 @@ One line each: what it is known for, and whether it publishes numbers. Where a
 competitor is being studied for what to refuse, say so, because an artboard
 naming it otherwise reads as an endorsement.
 
-## One catalogue, if the project asked for it
+## There is no catalogue behind this
 
-`.agentkit/team.md` carries a `references` setting: `curated` or `refero`.
-Curated is the list above, it needs no account and no service, and it is what
-runs when the setting is absent.
+The list above is the whole reference set, and it needs no account and no
+service. A third-party catalogue was offered until #123: refero, whose MCP
+access is sold on a Pro plan and whose documented address served a marketing
+page rather than a server. Both were measured before the value came out.
 
-`refero` adds `styles.refero.design`, which extracts a design system from a
-product's website and publishes it as a `DESIGN.md`. It arrives through the
-Refero MCP server offered at `refero.design/mcp`, and rule 9 wants a probe of
-what its tools return before anything parses them.
-`probes/refero_styles.py` measured the site on 2026-08-30: a style page is
-270 KB of HTML carrying colours, typography, spacing, shapes, elevation and
-components, and no path serves the `DESIGN.md` as a file.
-
-It answers one question: a product this list does not cover, whose numbers are
-wanted for one component.
+So a product this list does not cover gets read directly. Open the site, take
+the numbers off the rendered page, and cite the URL. #131 is where a shared
+store of those readings would come from.
 
 ## How to use a reference
 
