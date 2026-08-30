@@ -65,11 +65,16 @@ repository's merged count, and treat a number equal to the limit as a truncated
 answer rather than a total.
 
 ```sh
-gh pr list --state merged --limit 200 --json number,headRefName \
-  -q '.[] | .headRefName' | while read -r b; do
-  git ls-remote --exit-code --heads origin "$b" >/dev/null 2>&1 && echo "$b"
-done
+git fetch -p -q origin
+comm -12 \
+  <(gh pr list --state merged --limit 200 --json headRefName -q '.[].headRefName' | sort -u) \
+  <(git ls-remote --heads origin | sed 's|.*refs/heads/||' | sort -u)
 ```
+
+One `ls-remote` for the whole remote, intersected with the merged list. Asking
+per branch instead is one network call per merged pull request, and at two
+hundred it runs past two minutes and gets killed, which looks like a clean
+remote and is not.
 
 Delete each with `git push origin --delete <b>`. A branch here is debris by
 definition: its pull request is merged and the branch is still on the remote.
