@@ -55,6 +55,14 @@ and defaults to `shaping` when there is no commit.
 
 Ask all five in one pass. Four carry a default worth accepting.
 
+**Ask in plain words, and put the options inside the question.** One message,
+five questions, each answerable without opening a file: what the project is
+called, one line on what it does, which gates it runs and what else that
+decides, who merges, and whether it is shaping or building. Name the legal
+values inline every time. A question that sends the operator off to a skill to
+find out what the answers are has not been asked yet, and #128 is four rounds
+of exactly that.
+
 | Answer | Flag | Default |
 |---|---|---|
 | Which gates the project runs, what CI installs, and which design driver arrives | `--pack python\|typescript\|python+typescript\|none` | **None. This is the one it will not guess.** |
@@ -308,9 +316,14 @@ it takes an issue and a branch like anything else.
 
 ## Reporting the run back
 
-Three things a report gets wrong by default. All three were paid for in #109's
-phase A, where the operator had to ask four times for something the report
-should have carried.
+**Where the project stands, then what is left, and stop.** Two short paragraphs
+and a list. An adoption report is read once, by somebody deciding whether they
+can start working, and a wall of detail buries the two lines they needed. Put
+anything longer in an issue and name it in the list.
+
+Three things it gets wrong by default. All three were paid for in #109's phase
+A, where the operator had to ask four times for something the report should
+have carried.
 
 **Name a setting's values whenever the setting is named.** `surface` above is
 the standing case, and the pack is the same shape.

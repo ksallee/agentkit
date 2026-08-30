@@ -102,7 +102,10 @@ from the projects it seeds, the way it withholds `bin/adopt`.
 Three skills have a slash command, because a command is the one thing a
 `description` cannot advertise. **`adopt`**, as `/agentkit`, sets a project up
 or updates one, and reads the rest of the line as free text it says back before
-writing anything. **`pick-work`**, as `/work`, says what to do next.
+writing anything. **That command is how an adoption starts here.** `bin/adopt`
+is the tool under it, and reaching for the tool first skips the say-back, the
+five answers and the plan, which are the parts that stop a write going into the
+wrong directory. **`pick-work`**, as `/work`, says what to do next.
 **`wrap-up`**, as `/done`, ends a session: the tree is clean, the prose gets
 read against STYLE.md, and every preference the session stated is written into
 the file that reads it next.
