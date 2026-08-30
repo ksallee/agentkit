@@ -102,5 +102,8 @@ and #34, which is what a second copy does. `tests/test_skills.py` asserts the
 two that stay: a command names a skill that exists, and a skill named here
 exists.
 
-The team layer is data that skills read. Skill precedence doesn't exist: two
-skills of one name both load.
+The team layer is data that skills read, which is why it wins on a convention.
+A skill name has no such protection. Two skills of one name both load, and a
+typed name reaches the personal copy, so a project's committed skill loses to
+one its reader already had. Measured 2026-08-30 at #40, and
+`probes/skill_precedence.py` prints the roots in the order they concatenate.
