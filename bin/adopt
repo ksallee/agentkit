@@ -86,7 +86,13 @@ IGNORED_SUFFIXES = (".pyc",)
 # part of any template on any machine, and this answers whether a file that is
 # belongs to the project. Keeping them apart is what lets a reader looking for
 # why a skill went missing find one list with the reason on it.
-TEMPLATE_ONLY = "template_only"
+#
+# The `_KEY` suffix is load-bearing. `tests/test_skills.py` reads every status
+# this module declares as the module level string whose name is its own value
+# uppercased, and asserts each one has a row in the outcome table the `adopt`
+# skill carries. A constant named `TEMPLATE_ONLY` would be read as a status
+# nothing can report.
+TEMPLATE_ONLY_KEY = "template_only"
 
 # What happened to one file. `unchanged` wrote nothing. `kept` is the only
 # status that leaves a second file behind.
@@ -177,7 +183,7 @@ def seeds(template: Path) -> list[tuple[str, Path]]:
     `seeds.json`.
     """
     declared = json.loads((template / SEEDS).read_text())
-    withheld = [_named(template, entry) for entry in declared.get(TEMPLATE_ONLY, [])]
+    withheld = [_named(template, entry) for entry in declared.get(TEMPLATE_ONLY_KEY, [])]
     found: list[tuple[str, Path]] = []
     for entry in declared["tracked"]:
         source = _named(template, entry)
