@@ -36,6 +36,12 @@ command = "uvx ruff check bin tests"
 # 3.14 is the latest stable, so the scaffolding is exercised on what a new
 # project would get. A project seeded from a pack names no version and keeps
 # whatever it chose.
+#
+# `--with pytest` because this repository is a template and not a package:
+# there is no pyproject declaring a dev dependency, so nothing would install
+# pytest. Without it the gate passes on a machine that happens to have pytest
+# and fails on a clean runner, which is what happened the first time CI ran.
+# A seeded project declares pytest itself, so its pack names the plain command.
 [[gate]]
 name = "tests"
-command = "uv run --python 3.14 pytest tests/ -q"
+command = "uv run --python 3.14 --with pytest pytest tests/ -q"
