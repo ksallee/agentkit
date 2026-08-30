@@ -18,7 +18,7 @@ Three layers. Precedence is per field.
 |---|---|---|
 | Shipped | this repository, seeded by `adopt` | nothing; it is the default |
 | Team | `.agentkit/` in the project, committed | anything two people must agree on |
-| Personal | `context.md` beside the project's data, never committed | taste |
+| Personal | `.agentkit/local.md`, gitignored | taste |
 
 **Team wins on the gate list and the phase.** One person opting out of the
 test suite isn't a preference. **Personal wins on taste**: how work is
@@ -26,8 +26,9 @@ delivered, which guide is read, how large a pull request should be.
 
 `.agentkit/team.md` holds conventions and who owns what. `.agentkit/gates.toml`
 declares the gates; `bin/verify` runs them. `.agentkit/phase.json` says
-`shaping` or `building`. `context.md` is one person's file, and its absence
-means nobody has been asked yet.
+`shaping` or `building`. `.agentkit/local.md` is one person's file, and its
+absence means nobody has been asked yet. Where that file belongs for a project
+with no data directory is #15; this path is what works today.
 
 ## 1 to 8 are reserved for the project
 
