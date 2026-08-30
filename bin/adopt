@@ -23,6 +23,10 @@ Four kinds of file, and only the first is ever replaced whole:
   seeded once.
 - `.gitignore` gets a delimited block, rewritten on every run, with every line
   outside it left alone.
+
+A first write ends by running the gate list it seeded, through the project's
+own `bin/verify`. A red gate is reported and leaves this at 0, because the
+files are written whatever the gates say. `--no-gates` skips the run.
 """
 
 from __future__ import annotations
@@ -31,6 +35,7 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import shutil
 import subprocess
 import sys
 from collections.abc import Collection
@@ -1128,6 +1133,69 @@ def default_phase(project: Path) -> str:
     return "building" if done.returncode == 0 else "shaping"
 
 
+# The runner a project got from `seeds.json`, named here because the gate run
+# below invokes it and nothing else in this file does.
+RUNNER_REL = "bin/verify"
+
+
+def missing_tools(pack: str) -> list[str]:
+    """Every binary the seeded gate list names that this machine cannot run.
+
+    `bin/verify` carries a `uv run --script` shebang, so uv is what runs any
+    gate at all and it is checked whatever the pack declares. A gate naming
+    `bin/x` is seeded beside the runner and needs nothing installed, so only
+    the other commands are looked up.
+    """
+    wanted = ["uv"]
+    wanted += [
+        command.split()[0]
+        for _, command, _ in PACKS[pack]
+        if not command.split()[0].startswith("bin/")
+    ]
+    return sorted({name for name in wanted if shutil.which(name) is None})
+
+
+def run_gates(project: Path, pack: str) -> int:
+    """Run the gates this adoption seeded and print what they printed.
+
+    A first write ends here, because the gate list, the runner and the files
+    the gates read all arrived in the same run and nothing has told the project
+    whether they hold together. `bin/verify` is the only thing that reads
+    `.agentkit/gates.toml`, so this invokes it and reimplements nothing.
+
+    A red gate leaves this at 0. The adoption is written either way, the
+    manifest records it, and an exit code saying otherwise would read as a
+    failed write. What a project does about the red gate is the project's.
+
+    An absent toolchain is reported without running anything. `uvx ruff` on a
+    machine with no uv exits non-zero from the runner, under a gate name, with
+    no line saying the machine is what is missing, and a first adoption is
+    exactly when a reader has no basis for telling the two apart.
+    """
+    print(f"\ngates    {project / TEAM_DIR}/gates.toml")
+    if not PACKS[pack]:
+        print(f"  the {pack} pack declares no gates, so there is nothing to run")
+        return 0
+    runner = project / RUNNER_REL
+    if not runner.is_file():
+        print(f"  nothing ran: {RUNNER_REL} is not here")
+        return 0
+    missing = missing_tools(pack)
+    if missing:
+        print(f"  nothing ran: this machine has no {', '.join(missing)}")
+        print(f"  Install what the pack needs, then run {RUNNER_REL}. The adoption is written.")
+        return 0
+    print()
+    # The runner writes to this process's stdout, and a redirected stdout here
+    # is block buffered, so without this every line above lands after it.
+    sys.stdout.flush()
+    done = subprocess.run([str(runner)], cwd=project, check=False)
+    if done.returncode:
+        print(f"\nThe adoption is written. Rule 17 wants every gate green, and {RUNNER_REL}")
+        print("reruns them.")
+    return done.returncode
+
+
 def report(
     project: Path,
     files: list[Outcome],
@@ -1240,6 +1308,11 @@ def main(argv: list[str] | None = None) -> int:
         choices=REFERENCES,
         help="Where the design pipeline gets its reference list. Default: curated.",
     )
+    ap.add_argument(
+        "--no-gates",
+        action="store_true",
+        help="Skip the gate run a first write ends with.",
+    )
     args = ap.parse_args(argv)
 
     project = args.project.resolve()
@@ -1281,6 +1354,10 @@ def main(argv: list[str] | None = None) -> int:
         "references": args.references or REFERENCES[0],
     }
 
+    # Read before anything is written, because the write creates the manifest
+    # and every later run would look like the first one.
+    first_run = not (project / MANIFEST_REL).is_file()
+
     if args.write:
         files = write(args.template, project, pack)
         team = seed_team(project, answers)
@@ -1295,6 +1372,8 @@ def main(argv: list[str] | None = None) -> int:
         ignore = plan_gitignore(project)
     skills = personal_collisions(args.template)
     report(project, files, team, flows, route, ignore, skills, dry=not args.write)
+    if args.write and first_run and not args.no_gates:
+        run_gates(project, pack)
     return 0
 
 

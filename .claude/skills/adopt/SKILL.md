@@ -63,10 +63,23 @@ disagree with CI, and a rule CI contradicts is worse than an absent one.
 Guessing `python` from a `pyproject.toml` gets every project with a `web/` half
 wrong. Ask.
 
-The seeded gate list is a starting point that nothing verified. After the
-write, run `bin/verify` once and correct `.agentkit/gates.toml` where a gate
-fails for the wrong reason. The seeded workflow runs the same command, so a
-gate that passes here passes there.
+**A first write ends by running the gate list it seeded.** `bin/adopt` invokes
+the project's own `bin/verify` and prints its table, so the operator learns on
+day one whether the scaffolding holds together. Three things come with that
+run:
+
+- A red gate leaves `bin/adopt` at 0. The files are written and the manifest
+  records them whatever the gates say, and an exit code saying otherwise would
+  read as a failed write.
+- A machine with no `uv` or `uvx` is named and no gate runs. `uvx ruff` on a
+  machine without uv fails under a gate name and says nothing about the
+  machine, and a first adoption is where a reader has least basis for telling
+  the two apart.
+- A rerun runs nothing, and `--no-gates` skips the run on a first write.
+
+The seeded gate list is still a starting point. Correct `.agentkit/gates.toml`
+where a gate fails for the wrong reason. The seeded workflow runs the same
+command, so a gate that passes here passes there.
 
 The pack also picks what CI installs: uv for every pack, plus node, pnpm and an
 install step for a pack with pnpm gates. A gate added later that needs another
@@ -239,10 +252,15 @@ Then, in the project:
 
 ```sh
 git status --short
-git add CLAUDE.md .agentkit .github docs .claude && git commit
+git add CLAUDE.md ruff.toml .agentkit .claude .github bin design docs probes \
+  tests/test_scaffolding.py
+git commit
 ```
 
-The manifest is committed, so both people see the same adoption state.
+The manifest is committed, so both people see the same adoption state. The
+paths are named one by one because the gate run leaves whatever the gates
+cache: in a python project `__pycache__/`, `.pytest_cache/` and `.ruff_cache/`,
+and the ignores for those three are the project's own to write.
 
 ## Updating later
 
