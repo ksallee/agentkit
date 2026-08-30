@@ -237,6 +237,21 @@ class TestWhatAProjectInherits:
                 if first.startswith("bin/"):
                     assert first in SEEDED_BIN, f"{pack}/{name} names unseeded {first}"
 
+    def test_the_loop_is_seeded(self):
+        """A project gets /work, or it has no way to ask what to do next."""
+        tracked = __import__("json").loads((ROOT / "seeds.json").read_text())["tracked"]
+        assert ".claude/skills/" in tracked
+        assert ".claude/commands/" in tracked
+        assert (ROOT / ".claude" / "skills" / "pick-work" / "SKILL.md").is_file()
+        assert (ROOT / ".claude" / "commands" / "work.md").is_file()
+
+    def test_pick_work_carries_no_other_project_taxonomy(self):
+        """It reads `gh label list` so one project's labels stay in that project."""
+        skill = (ROOT / ".claude" / "skills" / "pick-work" / "SKILL.md").read_text()
+        assert "gh label list" in skill
+        for borrowed in ("aw-server", "sessionizer", "mac-hours", "area: pipeline"):
+            assert borrowed not in skill, f"pick-work names {borrowed}"
+
     def test_no_seeded_command_needs_a_shell(self):
         """The runner uses shlex and no shell, so `cd x && y` looks for a binary named cd."""
         adopt = load(ROOT / "bin" / "adopt")
