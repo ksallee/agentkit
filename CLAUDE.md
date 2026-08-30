@@ -36,15 +36,14 @@ delivered, which guide is read, how large a pull request should be.
 `.agentkit/team.md` holds conventions and who owns what. `.agentkit/gates.toml`
 declares the gates; `bin/verify` runs them. `.agentkit/phase.json` says
 `shaping` or `building`. `.agentkit/local.md` is one person's file, and its
-absence means nobody has been asked yet. Where that file belongs for a project
-with no data directory is #15; this path is what works today.
+absence means nobody has been asked yet.
 
 ## 1 to 8 are reserved for the project
 
 These are the constraints a project locks before writing code: its storage
 model, its precedence, what it refuses to build. Only that project has the
-answers, and `shape` asks for them first. The numbers stay open so a project's
-rules and these never collide in a citation.
+answers, and `shape` asks for them first. The numbers stay open, so a citation
+of rule 3 means the project's rule 3 in every project that adopts this.
 
 An empty section invites invented constraints, so it stays absent until
 something is settled.
@@ -107,12 +106,11 @@ into the file that reads it next.
 The rest are named nowhere. Every `SKILL.md` opens with a `description` written
 to be read at load time, so a list here would be that description again, in a
 file with no way to know a skill arrived. It drifted twice in two days, at #31
-and #34, which is what a second copy does. `tests/test_skills.py` asserts the
-two that stay: a command names a skill that exists, and a skill named here
-exists.
+and #34. `tests/test_skills.py` asserts the two couplings that stay: a command
+names a skill that exists, and a skill named here exists.
 
-The team layer is data that skills read, which is why it wins on a convention.
-A skill name has no such protection. Two skills of one name both load, and a
-typed name reaches the personal copy, so a project's committed skill loses to
-one its reader already had. Measured 2026-08-30 at #40, and
-`probes/skill_precedence.py` prints the roots in the order they concatenate.
+Skills read the team layer as data, so it wins on a convention. A skill name
+has no such protection. Two skills of one name both load, and a typed name
+reaches the personal copy, so a project's committed skill loses to one its
+reader already had. `probes/skill_precedence.py` prints the roots in the order
+they concatenate (#40).

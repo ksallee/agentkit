@@ -44,19 +44,40 @@ The ban list catches spellings. These are the habits under them.
 
 Contractions are fine. Avoiding them is its own tell.
 
-Worked example, 48 words to 27:
+Worked example. The draft, 53 words:
 
 > A project read by two people needs somewhere to put a decision that is
 > neither shipped nor personal. Skill precedence cannot serve that: the loader
 > deduplicates by resolved file path and never by name, so a personal skill and
 > a project skill of the same name both load and neither shadows the other.
 
+Cut to 24:
+
 > If two people collaborate, decisions are team decisions (not shipped, not
 > personal). Skill precedence doesn't cut it: two skills of one name both load.
 
+`probes/skill_precedence.py` prints the roots a loader concatenates, and it
+contradicts both drafts. Two skills of one name both load, and a typed name
+reaches the personal copy, so a project's committed skill loses to one its
+reader already had (#40). The true sentence runs 48 words:
+
+> If two people collaborate, decisions are team decisions, neither shipped nor
+> personal. Skill precedence works, and it favours the personal copy: two
+> skills of one name both load, and a typed name reaches the personal one, so a
+> project's committed skill loses to one its reader already had.
+
+Twice the compression, five words under the draft. The 24-word version was
+short because it had dropped a fact, and `## Required` states the test it
+failed: density stays, words get cut.
+
 Per 10k words, measured against 9,660 words written by hand: `rather than` 3,
-`which is`/`that is` 6, `the thing that`/`is what` 4, `never` 24. Files here
-ran three to six times those.
+`which is`/`that is` 6, `the thing that`/`is what` 4, `never` 24, so 37
+combined. Count a file against that:
+
+```sh
+grep -oiE 'rather than|\bnever\b|the thing that|is what|which is|that is' FILE | wc -l
+wc -w FILE
+```
 
 **No checker counts them.** Whether an instance earns its place is a judgment.
 `wrap-up` reads what a session added.
