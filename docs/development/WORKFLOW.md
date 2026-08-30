@@ -242,6 +242,9 @@ request both. `effort:` is a third axis and never counts as the kind. The
 taxonomy grows as the project does, which is why the list gets read rather than
 remembered.
 
+**The area half waits for `shape` in a project that has not run it** (#125), so
+an issue and a pull request opened before then carry a kind label alone.
+
 Both objects carry them because both sit on the board and get filtered
 separately, and they can disagree. The process job reads the pull request's own
 labels, so a bare pull request fails rule 15 with its issue labelled correctly.
