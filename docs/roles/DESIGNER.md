@@ -137,11 +137,13 @@ same bytes and a diff on `design/` is a design change every time.
 
 ## Checking a design change
 
-Look at it, then measure it. A capture measures every box against the live app
-and fails on anything more than a 64th of a pixel out, so on a captured screen
-the reading is what is left to you. On a drawn artboard both halves are yours.
+Look at it, then measure it. A capture measures every box on the artboard
+against the live app and fails on anything more than a 64th of a pixel out, so
+a written artboard matches the screen it came from. Whether that screen was
+right is a separate question, and nothing in the capture answers it.
 
-Four things a reading misses and a measurement catches:
+Four things a reading misses and a measurement catches, on a captured artboard
+and a drawn one alike:
 
 - A cell that clips, where the content is wider than the box holding it.
 - A column out of alignment, where the left edges differ by a pixel or two.
