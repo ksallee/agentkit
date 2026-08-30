@@ -1,0 +1,22 @@
+# The same rules mac-hours uses, so code moving between the two is judged once.
+# A `ruff.toml` rather than a `pyproject.toml`, because this repository is a
+# template and not a Python package: there is nothing here to build or install.
+#
+# This file is not seeded into a project. A project picks its own lint config,
+# and the pack only declares the command.
+
+line-length = 100
+target-version = "py311"
+extend-exclude = [".venv"]
+
+# `bin/` holds executables with no `.py` suffix, and ruff walks a directory by
+# extension. Without this the lint gate reports "No Python files found" and
+# passes.
+extend-include = ["bin/*"]
+
+[lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "C4"]
+ignore = [
+    "E501",   # line length: the comments are the point, and many are prose
+    "SIM108", # ternaries are not always clearer than an if/else
+]

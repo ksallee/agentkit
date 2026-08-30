@@ -1,0 +1,36 @@
+# Rule 17's gates, run the same way a person runs them. Every step calls
+# `bin/verify <name>`, so no command appears here that is not declared in
+# `.agentkit/gates.toml`, and the rule text, the runner and this file cannot
+# drift apart.
+#
+# One step per gate rather than a bare `bin/verify`, so a failure names itself
+# in the job list instead of hiding in one log. Adding a gate to the
+# declaration means adding a step here: that is the residual drift, and it is
+# cheaper than making every gate declare its toolchain.
+
+name: Gates
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: gates-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gates:
+    name: Every gate in .agentkit/gates.toml
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+
+      # `bin/check-style` needs python3 alone and no project, which is why it
+      # runs first and why it works before uv has resolved anything.
+      - run: bin/verify style
+      - run: bin/verify lint
+      - run: bin/verify tests

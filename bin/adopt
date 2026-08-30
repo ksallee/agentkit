@@ -64,24 +64,30 @@ KEPT = "kept"
 # The gate lists, one per language, as (name, command, cwd). `adopt` refuses to
 # guess this: a gate list that names a command the project does not run makes
 # rule 17 disagree with CI, and a rule CI contradicts is worse than an absent
-# one. No pack declares a style gate, because `bin/check-style` is not ported
-# here yet (#3) and seeding a gate that names it would be the same failure. The
-# commands are a starting list the project edits, and nothing here checks that
-# they run.
+# one. The commands are a starting list the project edits, and nothing here
+# checks that they run.
+#
+# Every language pack declares the style gate, because `seeds.json` now seeds
+# `bin/check-style` and every project has prose. `none` stays empty on purpose:
+# it is the pack for a project declaring its own list, and `bin/verify` treats
+# an empty declaration as a choice rather than a break.
 #
 # The runner splits a command with `shlex` and runs it without a shell, so a
 # gate that has to run somewhere else declares `cwd` and never writes `cd x &&`
 # into the command. Without the field the runner looks for a binary named `cd`.
 PACKS: dict[str, tuple[tuple[str, str, str | None], ...]] = {
     "python": (
+        ("style", "bin/check-style .", None),
         ("test", "uv run pytest", None),
         ("lint", "uvx ruff check .", None),
     ),
     "typescript": (
+        ("style", "bin/check-style .", None),
         ("check", "pnpm check", None),
         ("test", "pnpm test", None),
     ),
     "python+typescript": (
+        ("style", "bin/check-style .", None),
         ("test", "uv run pytest", None),
         ("lint", "uvx ruff check .", None),
         ("web-check", "pnpm check", "web"),
@@ -206,6 +212,10 @@ def write(template: Path, project: Path) -> list[Outcome]:
             # numbered files nobody reads.
             (project / result.sidecar).write_bytes(target.read_bytes())
         target.write_bytes(payload)
+        # Mode travels with the bytes. A seeded `bin/verify` that lost its
+        # executable bit cannot be run the way `gates.toml` names it, and the
+        # failure is a permission error in CI rather than anything readable.
+        target.chmod((template / result.rel).stat().st_mode & 0o777)
     _record(template, project, files)
     return results
 

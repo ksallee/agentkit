@@ -1,0 +1,160 @@
+#!/usr/bin/env python3
+"""Gate the mechanical half of docs/development/STYLE.md.
+
+style-check: exempt, because the rules below quote the patterns they ban.
+
+Only patterns with no false positives are checked here. Cadence, front-loading
+and vocabulary choice are review matters: a checker guessing at them would cry
+wolf, and a gate people learn to ignore protects nothing.
+
+    bin/check-style .              # every tracked file under a directory
+    bin/check-style . --changed    # only what differs from main
+    bin/check-style ../other-repo  # a checkout that is not this one
+
+The path is an argument, so one copy gates several repositories. A template
+that seeds this file into a project needs it to check the project it landed in.
+"""
+
+from __future__ import annotations
+
+import argparse
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+# Vendored UI components carry somebody else's prose in their comments. Every
+# other tracked file is authored here and in scope.
+SKIP = ("web/src/lib/components/ui/", "node_modules/", ".venv/")
+
+SUFFIXES = (".md", ".py", ".ts", ".svelte", ".css", ".yml", ".yaml")
+
+# An executable with no suffix is authored prose too, and matching on suffix
+# alone let `bin/` escape its own gate. A tracked file with no extension is in
+# scope when it opens with a shebang, which is what tells a script apart from
+# the LICENSE and Makefile sitting beside it.
+SHEBANG = "#!"
+
+# A file that has to quote the banned patterns in order to define them opts out
+# by carrying this near its top. Two files legitimately need it: this one and
+# the style guide. Anything else using it should say why on the same line.
+EXEMPT = "style-check: exempt"
+
+Rule = tuple[str, re.Pattern[str], str]
+
+RULES: tuple[Rule, ...] = (
+    (
+        "em dash",
+        re.compile(r"—"),
+        "use . , : or ()",
+    ),
+    (
+        "not X, Y",
+        re.compile(
+            r"\b(?:it|this|that|these|those)?\s*(?:is|are|was|'s)?\s*not\s+"
+            r"(?:just|only|merely|simply)\s+\w+[,;]?\s+(?:but|it|they)\b",
+            re.I,
+        ),
+        "say the second half; use two sentences if the contrast matters",
+    ),
+    (
+        "antithesis",
+        re.compile(r"\bis not (?:a |an |the )?\w+[,.]\s+(?:it|they)['’]?s?\b", re.I),
+        "say what it is",
+    ),
+    (
+        "hedging preamble",
+        re.compile(
+            r"\b(?:it(?:'s| is) (?:important|worth) to note|it(?:'s| is) worth noting"
+            r"|generally speaking|in many cases|at its core|simply put|needless to say)\b",
+            re.I,
+        ),
+        "delete it and start with the claim",
+    ),
+    (
+        "marketing vocabulary",
+        re.compile(
+            r"\b(?:leverag(?:e|es|ed|ing)|delve[sd]?|utiliz(?:e|es|ed|ing)"
+            r"|seamless(?:ly)?|cutting-edge|best-in-class|game-chang\w+)\b",
+            re.I,
+        ),
+        "use a plain verb, or delete the adjective",
+    ),
+    (
+        "vague attribution",
+        re.compile(r"\b(?:studies show|experts agree|it is widely (?:considered|believed))\b", re.I),
+        "name the source or give the measurement",
+    ),
+)
+
+
+def is_script(path: Path) -> bool:
+    try:
+        with path.open("rb") as fh:
+            return fh.read(2) == SHEBANG.encode()
+    except OSError:
+        return False
+
+
+def in_scope(root: Path, name: str) -> bool:
+    if any(name.startswith(s) or s in name for s in SKIP):
+        return False
+    if name.endswith(SUFFIXES):
+        return True
+    return not Path(name).suffix and is_script(root / name)
+
+
+def tracked(root: Path, changed_only: bool) -> list[Path]:
+    if changed_only:
+        base = subprocess.run(
+            ["git", "merge-base", "HEAD", "origin/main"],
+            capture_output=True,
+            text=True,
+            cwd=root,
+        ).stdout.strip()
+        args = ["git", "diff", "--name-only", base] if base else ["git", "diff", "--name-only"]
+    else:
+        args = ["git", "ls-files"]
+    out = subprocess.run(args, capture_output=True, text=True, cwd=root).stdout.split()
+    return [root / f for f in out if in_scope(root, f)]
+
+
+def check(root: Path, path: Path) -> list[str]:
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
+        return []
+    if any(EXEMPT in line for line in lines[:20]):
+        return []
+    rel = path.relative_to(root)
+    found = []
+    for n, line in enumerate(lines, 1):
+        for name, pattern, fix in RULES:
+            m = pattern.search(line)
+            if m:
+                found.append(f"{rel}:{n}: {name} ({m.group(0).strip()[:40]!r}): {fix}")
+    return found
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("path", nargs="?", default=".", help="Repository to check. Default: here.")
+    ap.add_argument("--changed", action="store_true", help="Only files differing from main.")
+    args = ap.parse_args()
+
+    root = Path(args.path).resolve()
+    if not root.is_dir():
+        sys.exit(f"{root} is not a directory.")
+
+    problems = [p for path in tracked(root, args.changed) for p in check(root, path)]
+    if not problems:
+        print("Style is clean.")
+        return 0
+    for p in problems:
+        print(f"  {p}")
+    print(f"\n{len(problems)} style problem(s). See docs/development/STYLE.md.")
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

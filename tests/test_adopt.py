@@ -82,7 +82,7 @@ class TestTheSeedList:
 class TestFirstAdoption:
     def test_every_seeded_file_lands(self, template, project):
         results = adopt.write(template, project)
-        assert statuses(results) == {rel: adopt.WRITTEN for rel in ALL_SEEDED}
+        assert statuses(results) == dict.fromkeys(ALL_SEEDED, adopt.WRITTEN)
         for rel in ALL_SEEDED:
             assert (project / rel).read_bytes() == (template / rel).read_bytes()
 
