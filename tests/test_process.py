@@ -211,6 +211,59 @@ class TestTheChecksThatTravel:
         assert done.returncode == 1
         assert status(done.stdout, "style") == "FAIL"
 
+    def test_a_banned_pattern_inside_a_fence_passes(self, tmp_path):
+        """Rule 17 asks for gate output, and a style checker quotes what it caught.
+
+        The dash is built rather than typed, so this file stays inside the
+        style gate it is testing.
+        """
+        body = (
+            "Closes #10\n\nWhat bin/check-style printed:\n\n"
+            "```\n  handover.md:1: em dash ('" + chr(8212) + "'): use . , : or ()\n```\n"
+        )
+        done = run(project(tmp_path, AGENTKIT_CONFIG), pull(body=body), tmp_path)
+        assert done.returncode == 0, done.stdout
+        assert status(done.stdout, "style") == "pass"
+
+    def test_the_same_pattern_outside_the_fence_still_fails(self, tmp_path):
+        """The exemption covers what was pasted. The prose around it keeps its gate."""
+        body = (
+            "Closes #10\n\nA fix " + chr(8212) + " and its reason.\n\n"
+            "```\n  handover.md:1: em dash ('" + chr(8212) + "'): use . , : or ()\n```\n"
+        )
+        done = run(project(tmp_path, AGENTKIT_CONFIG), pull(body=body), tmp_path)
+        assert done.returncode == 1
+        assert status(done.stdout, "style") == "FAIL"
+        assert "body:3:" in done.stdout
+        assert "body:6:" not in done.stdout
+
+    def test_a_fence_does_not_exempt_a_commit_subject(self, tmp_path):
+        """A subject is one line, and a fence in a body never reaches it."""
+        payload = pull(
+            body="Closes #10\n\n```\nfenced\n```\n",
+            commits=[{"sha": "abc12345", "message": "A fix " + chr(8212) + " and its reason #10\n", "parents": 1}],
+        )
+        done = run(project(tmp_path, AGENTKIT_CONFIG), payload, tmp_path)
+        assert done.returncode == 1
+        assert status(done.stdout, "style") == "FAIL"
+
+    def test_an_unclosed_fence_runs_to_the_end_of_the_body(self, tmp_path):
+        payload = pull(body="Closes #10\n\n```\nA fix " + chr(8212) + " and its reason.\n")
+        done = run(project(tmp_path, AGENTKIT_CONFIG), payload, tmp_path)
+        assert done.returncode == 0, done.stdout
+
+    def test_a_tilde_fence_closes_on_tildes_alone(self, tmp_path):
+        """A backtick line inside a tilde fence is content, so the block stays open."""
+        body = (
+            "Closes #10\n\n~~~\n```\nA fix " + chr(8212) + " and its reason.\n~~~\n"
+            "Prose " + chr(8212) + " again.\n"
+        )
+        done = run(project(tmp_path, AGENTKIT_CONFIG), pull(body=body), tmp_path)
+        assert done.returncode == 1
+        assert status(done.stdout, "style") == "FAIL"
+        assert "body:7:" in done.stdout
+        assert "body:5:" not in done.stdout
+
     def test_the_style_rules_are_the_ones_check_style_holds(self):
         """One list. A second copy is the one that drifts."""
         style = load(ROOT / "bin" / "check-style")
