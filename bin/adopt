@@ -3,6 +3,7 @@
 
     python3 bin/adopt /path/to/project                    # plan, writes nothing
     python3 bin/adopt /path/to/project --write --pack python
+    python3 bin/adopt /path/to/project --check            # how far behind, exit 1
 
 Standard library only, so this runs on a machine that has installed nothing
 and on any CI runner.
@@ -29,6 +30,11 @@ own `bin/verify`, and a pack whose gates run pnpm installs first so the check
 gate has a `tsc` to resolve. A red gate or a failed install is reported and
 leaves this at 0, because the files are written whatever either says.
 `--no-gates` skips the install with the run.
+
+`--check` writes nothing and answers a different question: how far the template
+has moved since this project adopted it, which of the files it copies changed,
+and which of those it has edited. It exits 1 on a project that is behind, so it
+can sit in that project's CI.
 """
 
 from __future__ import annotations
@@ -432,11 +438,12 @@ def _record(template: Path, project: Path, files: dict[str, str], gone: Collecti
     the project wrote. `gone` names the rows whose files this run deleted, and
     those go with them.
 
-    The origin and the commit are provenance for a reader asking which template
-    version a project is on. Neither is read back: a rerun compares hashes, and
-    a template moved to another directory still updates the project it seeded.
-    `pack` is read back, by `recorded_pack`, because a rerun that guessed it
-    would seed the wrong capture driver.
+    The origin is provenance for a reader asking where a project's copy came
+    from, and nothing reads it back: a template moved to another directory
+    still updates the project it seeded. The commit is read back by `--check`,
+    which measures how far the template has moved since. `pack` is read back by
+    `recorded_pack`, because a rerun that guessed it would seed the wrong
+    capture driver.
     """
     path = project / MANIFEST_REL
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -452,18 +459,220 @@ def _record(template: Path, project: Path, files: dict[str, str], gone: Collecti
     return path
 
 
-def _commit(root: Path) -> str:
-    """The template's HEAD, or an empty string when git cannot answer."""
+def _git(root: Path, *args: str) -> subprocess.CompletedProcess[str] | None:
+    """Run git in `root`, or `None` when it could not be run at all.
+
+    A machine with no git and a directory that is no repository are both
+    answers this file reports rather than crashes on, so every caller here
+    handles a `None` and a non-zero return the same way.
+    """
     try:
-        done = subprocess.run(
-            ["git", "-C", str(root), "rev-parse", "HEAD"],
+        return subprocess.run(
+            ["git", "-C", str(root), *args],
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=30,
+            check=False,
         )
     except (OSError, subprocess.SubprocessError):
+        return None
+
+
+# Appended to a recorded sha whose checkout had uncommitted changes. The same
+# marker `design/capture.py` writes into an artboard stamp, for the same
+# reason.
+DIRTY = "-dirty"
+
+
+def _commit(root: Path) -> str:
+    """The template's HEAD, marked `-dirty` when the tree has moved off it.
+
+    An adoption copies the working tree, so a clean sha recorded against a
+    dirty checkout names a commit whose files the project never received, and
+    `git show <sha>:<file>` then disagrees with the seeded copy. A visibly
+    untrustworthy sha beats a silently wrong one, and every `--check` answer
+    rests on this field.
+
+    Nothing is excluded from the status. `design/capture.py` excludes its own
+    output directory because a capture writes there; an adoption writes into
+    the project and never into the template, so every change here is a change
+    to what the next adoption would seed.
+    """
+    head = _git(root, "rev-parse", "HEAD")
+    if head is None or head.returncode != 0:
         return ""
-    return done.stdout.strip() if done.returncode == 0 else ""
+    status = _git(root, "status", "--porcelain")
+    moved = status is not None and status.returncode == 0 and bool(status.stdout.strip())
+    return head.stdout.strip() + (DIRTY if moved else "")
+
+
+# ---------------------------------------------------------------------------
+# The drift check, the one thing that reads the recorded commit back
+
+
+# `--check` exit codes. A project behind its template exits 1, so the flag can
+# sit in that project's CI and fail there. Anything that leaves the question
+# unanswered exits 2 rather than passing: a directory nobody adopted is not a
+# directory that is up to date.
+CHECK_LEVEL = 0
+CHECK_BEHIND = 1
+CHECK_UNANSWERED = 2
+
+# What the report calls each side of the split, in the column `report()` uses
+# for a status.
+UNEDITED = "unedited"
+EDITED = "edited"
+DROPPED = "dropped"
+
+
+def recorded_commit(project: Path) -> str:
+    """The template commit the last adoption recorded, or an empty string."""
+    try:
+        loaded = json.loads((project / MANIFEST_REL).read_text())
+    except (OSError, ValueError):
+        return ""
+    template = loaded.get("template")
+    commit = template.get("commit") if isinstance(template, dict) else None
+    return commit if isinstance(commit, str) else ""
+
+
+def _bare(sha: str) -> str:
+    """A recorded sha with any `-dirty` marker taken off."""
+    return sha[: -len(DIRTY)] if sha.endswith(DIRTY) else sha
+
+
+def _short(sha: str) -> str:
+    """A recorded sha as git abbreviates it, keeping any `-dirty` marker."""
+    return _bare(sha)[:7] + (DIRTY if sha.endswith(DIRTY) else "")
+
+
+def commits_since(template: Path, base: str) -> int | None:
+    """How many commits the template has taken since `base`, or `None`.
+
+    `None` says no count describes the distance, and it covers four cases: no
+    sha was recorded, git could not run, the template has no history, and
+    `base` is not an ancestor of `HEAD`. The last one is what a force push, a
+    rebase or a second clone of the same project leaves behind, and counting
+    `base..HEAD` across a fork prints a confident number for a distance nobody
+    walked.
+    """
+    base = _bare(base)
+    if not base:
+        return None
+    ancestor = _git(template, "merge-base", "--is-ancestor", base, "HEAD")
+    if ancestor is None or ancestor.returncode != 0:
+        return None
+    counted = _git(template, "rev-list", "--count", f"{base}..HEAD")
+    if counted is None or counted.returncode != 0:
+        return None
+    found = counted.stdout.strip()
+    return int(found) if found.isdigit() else None
+
+
+def drift(template: Path, project: Path, pack: str = "none") -> tuple[list[str], list[str], list[str]]:
+    """Which seeded files have moved, as (unedited, edited, dropped).
+
+    A file has moved when the template's bytes today differ from the hash the
+    manifest recorded for it, which is the question `--check` asks and a
+    different one from what `plan` compares. A file the project edited while
+    the template left it alone is drift in neither direction, and `plan` calls
+    it `kept` because a rerun would still act on it.
+
+    `edited` means the project's copy differs from what the manifest recorded,
+    so a rerun writes the template's bytes and moves the project's to a
+    sidecar. A file the project deleted counts as unedited: a rerun writes it
+    and there is nothing to keep. `dropped` names a manifest row this template
+    no longer seeds, whose file is still on disk.
+    """
+    recorded = manifest(project)
+    tracked = seeds(template, pack)
+    unedited: list[str] = []
+    edited: list[str] = []
+    for rel, src in tracked:
+        was = recorded.get(rel)
+        if was == _sha(src.read_bytes()):
+            continue
+        target = project / rel
+        if target.is_file() and _sha(target.read_bytes()) != was:
+            edited.append(rel)
+        else:
+            unedited.append(rel)
+    seeded = {rel for rel, _ in tracked}
+    dropped = [rel for rel in sorted(recorded) if rel not in seeded and (project / rel).is_file()]
+    return unedited, edited, dropped
+
+
+def _headline(was: str, now: str, moved: int | None) -> str:
+    """The first line: how far the template has moved, or why that cannot be said."""
+    here = f"({_short(now)})" if now else "(agentkit answers no commit of its own)"
+    if not was:
+        return (
+            f"This project's manifest records no template commit {here}, so no count\n"
+            "describes the distance. The file list below is the answer."
+        )
+    if moved is None:
+        return (
+            f"agentkit has no {_short(was)} in its history {here}. A force push, a rebase or a\n"
+            "second clone leaves that, so no count describes the distance. The file list\n"
+            "below is the answer."
+        )
+    if was.endswith(DIRTY):
+        return (
+            f"agentkit moved {moved} commits since {_short(was)} {here}, and this project was\n"
+            "adopted from a checkout carrying uncommitted changes, so that count describes\n"
+            "agentkit's history and never what the project received. The file list below is\n"
+            "the answer."
+        )
+    if moved == 0:
+        return f"agentkit is at the commit this project adopted {here}."
+    return f"agentkit moved {moved} commits since this project adopted it ({_short(was)} -> {_short(now)})."
+
+
+def check(template: Path, project: Path, pack: str = "none") -> int:
+    """Say how far the template has moved since this project adopted it.
+
+    Three answers and an exit code: the distance in commits, which files the
+    project copies have changed, and which of those the project has edited
+    since. A rerun takes an untouched file whole and moves an edited one to a
+    `.local` sidecar, so that split is the part a reader acts on.
+
+    The files are compared against the hashes in the manifest and never against
+    the recorded commit, so the list holds when no count can be measured and on
+    a machine with no git at all. Which commit changed which file is left out:
+    it needs agentkit's history rather than its tree, and the split is what
+    decides whether a rerun is safe.
+
+    Exit 1 is the file list and never the commit count. A template that moved
+    without touching anything this project copies leaves the project current,
+    and a check that failed on it would be a check somebody turns off.
+    """
+    if not (project / MANIFEST_REL).is_file():
+        print(f"{project} carries no {MANIFEST_REL}, so no adoption ever wrote here.")
+        print(f"Seed it first:  bin/adopt {project} --write --pack <pack>")
+        return CHECK_UNANSWERED
+
+    was = recorded_commit(project)
+    print(_headline(was, _commit(template), commits_since(template, was)))
+    unedited, edited, dropped = drift(template, project, pack)
+    if not unedited and not edited and not dropped:
+        print("\nNo file this project copies has changed.")
+        return CHECK_LEVEL
+
+    if unedited or edited:
+        print(f"\n{len(unedited) + len(edited)} tracked files changed:")
+        print(f"  {len(unedited)} you have not edited   -> a rerun takes them")
+        print(f"  {len(edited)} you have edited       -> a rerun sidecars yours\n")
+        for rel in unedited:
+            print(f"  {UNEDITED:<9} {rel}")
+        for rel in edited:
+            print(f"  {EDITED:<9} {rel}")
+    if dropped:
+        print(f"\n{len(dropped)} file(s) here are gone from seeds.json:")
+        for rel in dropped:
+            print(f"  {DROPPED:<9} {rel}")
+        print("A rerun deletes each one whose bytes still match the manifest, and names the rest.")
+    print(f"\nRerun from the agentkit checkout to take them:\n  bin/adopt {project} --write")
+    return CHECK_BEHIND
 
 
 # ---------------------------------------------------------------------------
@@ -1383,6 +1592,11 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description="Seed the agentkit scaffolding into a project.")
     ap.add_argument("project", type=Path, help="The project to adopt into.")
     ap.add_argument("--write", action="store_true", help="Write. Without it this prints the plan and stops.")
+    ap.add_argument(
+        "--check",
+        action="store_true",
+        help="Report how far the template has moved since this project adopted it. Exits 1 when it is behind.",
+    )
     ap.add_argument("--template", type=Path, default=TEMPLATE, help="The template tree to seed from.")
     ap.add_argument("--pack", choices=sorted(PACKS), help="Which gate list to seed. Required to write the team layer.")
     ap.add_argument("--name", help="The project's name. Defaults to the directory name.")
@@ -1405,6 +1619,14 @@ def main(argv: list[str] | None = None) -> int:
     if not project.is_dir():
         print(f"{project} is not a directory.", file=sys.stderr)
         return 2
+
+    # Answered before the pack is demanded, because a project asking how far
+    # behind it is has already recorded its pack and is writing nothing.
+    if args.check:
+        if args.write:
+            print("--check writes nothing, so it does not run with --write.", file=sys.stderr)
+            return CHECK_UNANSWERED
+        return check(args.template, project, args.pack or recorded_pack(project) or "none")
 
     # The gate list and the gates workflow are both rendered from the pack, and
     # a project adopted before the workflow existed has one and not the other.
