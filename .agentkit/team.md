@@ -73,8 +73,8 @@ once the pull request has scrolled away. No gate checks either line.
 
 ## Design
 
-Two settings the design skills read. Rule 0 puts them here because two people
-open the same deliverable and cite the same references.
+One setting the design skills read. Rule 0 puts it here because two people
+open the same deliverable. `references` was the second until #123 removed it.
 
 | Setting | Values | Meaning |
 |---|---|---|

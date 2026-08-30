@@ -33,7 +33,7 @@ adopt = importlib.util.module_from_spec(_spec)
 sys.modules["adopt"] = adopt
 _loader.exec_module(adopt)
 
-# The six answers, as `main` assembles them. One constant, because the router
+# The five answers, as `main` assembles them. One constant, because the router
 # and the team layer are rendered from the same dict.
 ANSWERS = {
     "pack": "python",
