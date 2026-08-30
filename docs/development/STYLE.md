@@ -27,6 +27,39 @@ resolved from elsewhere.**
 | A closing sentence that states the moral | "And that is why grouping matters." The reader got there. | Stop at the last fact. |
 | Three-item lists written for rhythm | "fast, simple, and reliable" | Say the one that is true. |
 
+## Voice
+
+The ban list catches spellings. These are the habits under them.
+
+| Habit | Reads like | Write |
+|---|---|---|
+| Circling a word you could use | "somewhere to put a decision that is neither shipped nor personal" | "team decisions" |
+| Mechanism when the consequence is the point | "the loader deduplicates by resolved file path, so both load" | "both load" |
+| Contrast with what you rejected | "X rather than Y" | "X" |
+| Commandment mood | `never` in every rule | what happens |
+| Aphorism | "A gate that cannot fail is not a gate" | "Every gate must be able to fail" |
+| Clause bolted on with "which is" | "...and that is the operator's call" | end the sentence |
+| One claim, twice | "a guess", then "a guess wearing a number" | once |
+
+Contractions are fine. Avoiding them is its own tell.
+
+Worked example, 48 words to 27:
+
+> A project read by two people needs somewhere to put a decision that is
+> neither shipped nor personal. Skill precedence cannot serve that: the loader
+> deduplicates by resolved file path and never by name, so a personal skill and
+> a project skill of the same name both load and neither shadows the other.
+
+> If two people collaborate, decisions are team decisions (not shipped, not
+> personal). Skill precedence doesn't cut it: two skills of one name both load.
+
+Per 10k words, measured against 9,660 words written by hand: `rather than` 3,
+`which is`/`that is` 6, `the thing that`/`is what` 4, `never` 24. Files here
+ran three to six times those.
+
+**No checker counts them.** Whether an instance earns its place is a judgment.
+`wrap-up` reads what a session added.
+
 ## Required
 
 **Front-load.** The first sentence under a heading answers the question the
@@ -93,7 +126,7 @@ cannot see the conversation that produced it?
 - Measurements of data that changes. "287 of 890 sessions were unassigned."
 - Discovery narrative. "Found while looking at last Tuesday."
 - Session context, and "this used to be X".
-- An issue number standing in place of the reason. `# see #12` gives a reader
+- An issue number standing in place of the reason. `# see #N` gives a reader
   nothing to act on without leaving the file, and the link outlives the context
   that made it readable.
 - Restating the line below it.
@@ -105,22 +138,38 @@ sense without the link is unfinished.
 
 ```python
 # GOOD  A browser window event and its web events describe the same seconds.
-#       Counting both double-bills every focused browsing minute. (#12)
+#       Counting both double-bills every focused browsing minute. (#N)
 
-# BAD   Browser handling is subtle here, see #12.
+# BAD   Browser handling is subtle here, see #N.
 ```
 
 Durable history already has a home: the commit, the PR, the issue. Those are
 dated and stay accurate. A comment that copies them rots in place.
 
+## An instruction carries no history
+
+**The cut list above applies to every file an agent loads in order to act**:
+the router, the guides, the skills, the rules. It has lived under a comments
+heading and it was never only about comments.
+
+An instruction says what to do. Four things say how it came to exist:
+
+- Provenance. "Extracted from X, where every rule was used on real work."
+- Current state. "Not built yet." "Until then a person checks it."
+- The reasoning already settled. A finding belongs in a decision record.
+- The file's editorial policy about itself.
+
+The test: delete the sentence. When the reader still knows what to do, it was
+history.
+
 ## Enforced mechanically
 
-`scripts/check_style.py` gates the unambiguous half: em dashes, the banned
+`bin/check-style` gates the unambiguous half: em dashes, the banned
 phrase list, the "not X, Y" shapes. Run it locally, and CI runs it on every PR.
 
 A file that has to quote a banned pattern in order to define it opts out with
 `style-check: exempt` in its first 20 lines, plus the reason. Two files use it:
-`scripts/check_style.py` and this guide.
+`bin/check-style` and this guide.
 
 Cadence, front-loading and vocabulary are review matters. A checker that
 guessed at them would produce false positives, and a gate people learn to
@@ -128,7 +177,11 @@ ignore is worse than no gate.
 
 ## Length
 
-Long documents are fine when the length is content. The rule is density, so
-`WORKFLOW.md` earns its length by carrying that much process. A line count is
-not a target in either direction, and quoting one here would go stale on the
-next edit.
+Long is fine when the length is content. `WORKFLOW.md` earns its by carrying
+that much process. A line count is not a target in either direction.
+
+The test, per paragraph: what does this tell a reader that the one above did
+not? No answer, cut it. Two answers, it is two paragraphs.
+
+A rewrite that came out longer than what it replaced, for a reason that was not
+more coverage, is padding.

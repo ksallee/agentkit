@@ -6,12 +6,12 @@ description: Seed the agentkit scaffolding into a project, or update a project t
 # Adopting the scaffolding
 
 `bin/adopt` owns the copying and the hashing. This skill owns the questions.
-A manifest an agent improvises is not a manifest, so never write
-`.agentkit/manifest.json` by hand and never copy a seeded file with `cp`.
+Never write `.agentkit/manifest.json` by hand, and never copy a seeded file
+with `cp`. An improvised manifest lies on the next update.
 
 ## Preconditions
 
-Check these and print the fix rather than working around them.
+Check these and print the fix. Don't work around them.
 
 | Needs | Check | Fix |
 |---|---|---|
@@ -19,8 +19,8 @@ Check these and print the fix rather than working around them.
 | python3 | `python3 --version` | Ships with macOS. |
 | The target is a git repository | `git -C <project> rev-parse --git-dir` | `git init`, so a bad adoption is one `git checkout` away. |
 
-The last one is a precondition rather than a preference. Adoption replaces
-files, and a project with no history has no way back.
+The last one is a precondition. Adoption replaces files, and a project with no
+history has no way back.
 
 ## The five answers
 
@@ -74,14 +74,14 @@ something real. Two honest routes, and the operator picks:
 1. **Adopt the files that are absent, keep the rest.** Run with `--write`,
    then for each `kept` file merge by hand from the `.local` copy and delete
    the sidecar once it is merged. The manifest now says those bytes are the
-   template's, so the next update is `updated` rather than `kept`.
+   template's, so the next update reports `updated` and not `kept`.
 2. **Adopt nothing yet.** Take the plan as a diff of two ways of working and
    file the merges as issues.
 
 There is no mode that records the project's current bytes as the baseline.
-Doing that makes the manifest mean "these bytes were here once" rather than
-"these bytes came from the template", and the two differ on the very next run:
-under the second, `updated` replaces a file freely, so the lie cashes out as a
+That would make the manifest mean "these bytes were here once" instead of
+"these came from the template". The two differ on the next run: `updated`
+replaces a file freely, so the lie cashes out as a
 silent overwrite of work nobody here wrote.
 
 ## Writing
