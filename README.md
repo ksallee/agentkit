@@ -23,12 +23,20 @@ Private. Built for the way we work rather than for adoption by strangers.
 
 ```sh
 git clone git@github.com:ksallee/agentkit.git
-python3 agentkit/bin/adopt /path/to/your/project
+python3 agentkit/bin/adopt /path/to/your/project              # the plan
+python3 agentkit/bin/adopt /path/to/your/project --write --pack python
 ```
 
-`adopt` asks what the project is, writes the committed half, and records a
-sha256 per seeded file in `.agentkit/manifest.json`. Rerun it to update: a file
-you have not touched is rewritten, a file you have edited is kept and reported.
+The plan is the default and writes nothing, because the target is your
+repository. A write seeds every file in `seeds.json`, records a sha256 for each
+in `.agentkit/manifest.json`, and seeds `.agentkit/gates.toml`, `team.md` and
+`phase.json` once. Rerun it to update: a file you have not touched is rewritten,
+a file you have edited is replaced and yours is kept beside it as `.local`, with
+both names on the line.
+
+The `adopt` skill asks the five answers the team layer needs. The pack is the
+one it refuses to guess, because a gate list naming a command you do not run
+makes rule 17 disagree with CI.
 
 ## What it is not
 
