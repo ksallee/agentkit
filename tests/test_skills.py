@@ -15,14 +15,18 @@ the change is that most are not.
 
 The `adopt` skill tables the outcomes `bin/adopt` prints, and #41 added
 `removed` and `orphaned` while the table stayed at four. That table enumerates
-on purpose, so its assertion is the strict one: every status the script can put
-on an `Outcome` has a row, and no row names one it cannot.
+on purpose, so its assertion is the strict one: every status the script
+declares has a row, and no row names one the script cannot report. The statuses
+are read off the imported module, because a parse of the file saw only the
+shapes its author had met and passed while `appended` was missing (#70).
 """
 
 from __future__ import annotations
 
-import ast
+import importlib.util
 import re
+import sys
+from importlib.machinery import SourceFileLoader
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -91,46 +95,43 @@ def test_the_router_does_not_list_every_skill() -> None:
 # The `adopt` skill's outcome table against the statuses `bin/adopt` reports
 
 
+def _adopt():
+    """`bin/adopt` as a module. It carries no extension, so a plain import misses it.
+
+    `tests/test_adopt.py` loads it the same way under the same name. Whichever
+    file runs first does the work and the other reads what is there, so one
+    module object stands behind the one `sys.modules` entry.
+    """
+    if "adopt" in sys.modules:
+        return sys.modules["adopt"]
+    loader = SourceFileLoader("adopt", str(ADOPT))
+    module = importlib.util.module_from_spec(importlib.util.spec_from_loader("adopt", loader))
+    # Registered before it runs, because `@dataclass` resolves annotations
+    # through `sys.modules[cls.__module__]` and a module absent from there raises.
+    sys.modules["adopt"] = module
+    loader.exec_module(module)
+    return module
+
+
 def _reported_outcomes() -> set[str]:
-    """Every status `bin/adopt` can put on an `Outcome`, read out of its source.
+    """Every status `bin/adopt` declares, read off the imported module.
 
-    The script carries no extension and is run rather than imported, so this
-    parses it. A status reaches the operator only as `Outcome`'s second
-    argument, which is where the names come from: a constant nothing passes
-    there is a name the script cannot report, and a name added there arrives
-    here with no edit.
+    A status constant spells its own value, `APPENDED = "appended"`, and no
+    other module level string in that file holds its own name: the rest are
+    paths, markers and rendered bodies.
+
+    Reading the module replaces a parse of it. A parser has to resolve the
+    argument `Outcome` was built with, and a status reaches it as a local
+    unpacked from `gitignore(...)` and as the subscript `gitignore(...)[1]`,
+    so the two shapes nobody had thought of hid `appended` while the test
+    passed (#70). What this costs is one direction of precision: a status
+    constant nothing ever passes to `Outcome` still needs its row.
     """
-    tree = ast.parse(ADOPT.read_text(encoding="utf-8"))
-    constants = {
-        target.id: node.value.value
-        for node in tree.body
-        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant)
-        for target in node.targets
-        if isinstance(target, ast.Name) and isinstance(node.value.value, str)
+    return {
+        value
+        for name, value in vars(_adopt()).items()
+        if isinstance(value, str) and name == value.upper()
     }
-    named: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "Outcome":
-            status = node.args[1] if len(node.args) > 1 else _keyword(node, "status")
-            named |= _names(status)
-    return {constants[name] for name in named if name in constants}
-
-
-def _keyword(call: ast.Call, name: str) -> ast.expr | None:
-    return next((kw.value for kw in call.keywords if kw.arg == name), None)
-
-
-def _names(node: ast.expr | None) -> set[str]:
-    """The names one status argument can evaluate to.
-
-    An `IfExp` picks between two of them and its test names a path, so taking
-    every name under the node would read `ROUTER_REL` as a status.
-    """
-    if isinstance(node, ast.Name):
-        return {node.id}
-    if isinstance(node, ast.IfExp):
-        return _names(node.body) | _names(node.orelse)
-    return set()
 
 
 def _tabled_outcomes() -> set[str]:
@@ -188,7 +189,12 @@ FRONTMATTER = re.compile(r"\A---\n(.*?)\n---\n", re.S)
 DESCRIPTION = re.compile(r"^description:(.*?)(?=^[a-z][a-z0-9_-]*:|\Z)", re.M | re.S)
 
 # The numbered headings a body walks through. `## Preconditions` is not one.
-STEP_HEADING = re.compile(r"^## \d+\.", re.M)
+STEP_HEADING = re.compile(r"^## \d+\.")
+
+# A fenced block, opened and closed by three or more backticks or tildes, up to
+# three spaces in. `shape` renders an example router inside one, and both of the
+# `## N.` lines it shows belong to the example.
+FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
 
 # Spelled out because a description says "five" where a heading says `5.`, and
 # both spellings make the same claim about the same file. `one` is in the list
@@ -239,8 +245,38 @@ def _claimed_numbers(description: str) -> list[int]:
     ]
 
 
+def _steps(text: str) -> int:
+    """The `## N.` headings a body walks through, counting none inside a fence.
+
+    A skill that renders a numbered document as an example has those numbers in
+    its body without walking through them. Counted over the whole text, `shape`
+    has two steps it does not have, and a description stating its real count
+    would be the thing that failed (#70).
+
+    A closing fence matches the character its opening used and runs at least as
+    long, so a ```` ``` ```` inside a four-backtick block closes nothing.
+    """
+    steps = 0
+    fence = ""
+    for line in text.splitlines():
+        if found := FENCE.match(line):
+            marker = found.group(1)
+            if not fence:
+                fence = marker
+            elif marker[0] == fence[0] and len(marker) >= len(fence):
+                fence = ""
+        elif not fence and STEP_HEADING.match(line):
+            steps += 1
+    return steps
+
+
+def _miscounts(description: str, steps: int) -> list[int]:
+    """Every number a description states that the body's step count contradicts."""
+    return [n for n in _claimed_numbers(description) if n != steps]
+
+
 DESCRIBED = {name: _description(_skill_text(name)) for name in sorted(PRESENT)}
-STEPS = {name: len(STEP_HEADING.findall(_skill_text(name))) for name in sorted(PRESENT)}
+STEPS = {name: _steps(_skill_text(name)) for name in sorted(PRESENT)}
 
 
 def test_every_skill_has_a_description_and_some_carry_steps() -> None:
@@ -267,9 +303,45 @@ def test_no_description_states_a_step_count_its_body_contradicts() -> None:
     wrong = {
         name: (claimed, STEPS[name])
         for name, description in DESCRIBED.items()
-        if (claimed := [n for n in _claimed_numbers(description) if n != STEPS[name]])
+        if (claimed := _miscounts(description, STEPS[name]))
     }
     assert not wrong, (
         f"a description names a number its body does not have, as "
         f"name: (claimed, `## N.` headings): {wrong}"
     )
+
+
+# A body carrying both kinds of `## N.`: two headings the skill walks through,
+# and two inside a fenced example of a document it renders. `shape` is the real
+# case, and a fixture keeps this guard still while that skill's body moves.
+FENCED_EXAMPLE = """---
+name: demo
+description: Two steps, and an example of the numbering they write.
+---
+
+# Demo
+
+## 1. Ask
+
+What the answer lands as:
+
+```markdown
+## 1. The constraint, stated as what holds
+
+## 2. The next one
+```
+
+## 2. Write
+"""
+
+
+def test_a_numbered_example_inside_a_fence_is_not_a_step() -> None:
+    """A skill may render a numbered document without walking through it.
+
+    Four `## N.` lines, two of them the example's. Counting all four rejects
+    the description for stating the truth, which is what `shape` would have hit
+    the moment its description carried a number (#70).
+    """
+    assert len(re.findall(r"^## \d+\.", FENCED_EXAMPLE, re.M)) == 4
+    assert _steps(FENCED_EXAMPLE) == 2
+    assert not _miscounts(_description(FENCED_EXAMPLE), _steps(FENCED_EXAMPLE))
