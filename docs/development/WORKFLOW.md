@@ -24,15 +24,17 @@ Every word committed follows [`STYLE.md`](STYLE.md).
 ## What a machine checks
 
 A rule with no mechanical consumer decays into a convention people follow when
-they remember. These assert themselves on every pull request:
+they remember. This is the design, and **none of it is built here yet** (#7).
+The table says what a project gets once the checks are seeded, and what each
+rule would be left to a person without them:
 
 | Rule | Asserted by |
 |---|---|
 | 13, 15, 16, 19, and the branch name in 11 | `.github/workflows/process.yml`, over the pull request body, its labels and its commit subjects |
 | 12, no force-push | `.github/workflows/process.yml`, comparing the sha before each push against the sha after it |
-| 17, the gates | `bin/verify`, over everything `.agentkit/gates.toml` declares |
+| 17, the gates | a runner, over everything `.agentkit/gates.toml` declares |
 | 23, the body is the record | `pick-work`, which reads issue bodies and refuses to read comments |
-| 24, style | `bin/check-style` over every tracked file, and the process job over the pull request body and the commit subjects |
+| 24, style | a style checker over every tracked file, and the process job over the pull request body and the commit subjects |
 
 A project whose `.github/` has not been seeded has none of these, and a person
 reads all thirteen rules instead.
@@ -206,7 +208,7 @@ delete the branch.
 
 ### 17. Every gate declared in `.agentkit/gates.toml` passes before you say you are done
 
-The rule names no command. `bin/verify` runs what the file declares, in order,
+The rule names no command. A runner runs what the file declares, in order,
 and CI runs the same file. Anything else is a second copy that drifts.
 
 That duplication is measured. In mac-hours the five gate commands appeared in
@@ -314,9 +316,11 @@ to match, so the comment holds the measurement and the body holds the answer.
 Editing the body to say "the install path cannot pin a version, measured"
 leaves the comment that measured it in place.
 
-The cost of the alternative is paid by the reader every time. `pick-work` reads
-bodies and does not read comments, which stays correct only while this rule
-holds.
+The cost of the alternative is paid by the reader every time. The rule earns
+its place when something mechanical depends on it: in `mac-hours` the
+`pick-work` skill reads bodies and refuses to read comments, which stays
+correct only while this rule holds. A project with no such consumer has a
+convention rather than a rule, and should expect it to decay.
 
 ---
 

@@ -63,12 +63,13 @@ KEPT = "kept"
 
 # The gate lists, one per language. `adopt` refuses to guess this: a gate list
 # that names a command the project does not run makes rule 17 disagree with CI,
-# and a rule CI contradicts is worse than an absent one. The commands are a
+# and a rule CI contradicts is worse than an absent one. That is also why no
+# pack declares a style gate: the checker this scaffolding wants is not ported
+# yet (#7), and seeding a gate that names it would be the same failure. The commands are a
 # starting list the project edits, and nothing here checks that they run.
 PACKS: dict[str, tuple[tuple[str, str], ...]] = {
     "python": (
         ("test", "uv run pytest"),
-        ("style", "uv run python bin/check-style"),
         ("lint", "uvx ruff check ."),
     ),
     "typescript": (
@@ -77,7 +78,6 @@ PACKS: dict[str, tuple[tuple[str, str], ...]] = {
     ),
     "python+typescript": (
         ("test", "uv run pytest"),
-        ("style", "uv run python bin/check-style"),
         ("lint", "uvx ruff check ."),
         ("web-check", "cd web && pnpm check"),
         ("web-test", "cd web && pnpm test"),
@@ -256,7 +256,7 @@ def team_files(answers: dict[str, str]) -> dict[str, str]:
     return {
         "gates.toml": (
             "# Every gate this project runs, in order. Rule 17 cites this file and\n"
-            "# nothing else declares a gate, so the rule text, `bin/verify` and CI\n"
+            "# nothing else declares a gate, so the rule text, the runner and CI\n"
             f"# cannot disagree with each other. Seeded from the {pack} pack.\n"
             "#\n"
             "# Nothing checked that these commands run here. Edit the list to match\n"
