@@ -17,7 +17,7 @@ This skill is the method. Six inputs are the project's.
 | The constraints on every screen | the design guide under `docs/` | Ask, and write the answers there |
 | The person the work is delivered to | `.agentkit/local.md` | Nobody has been asked yet (rule 0) |
 | Where a finished design lands | `.agentkit/team.md`, `## Design`, `surface` | Ask. Step 8 has three answers and no default |
-| The capture, and the screens it opens | `design/capture.js` with `design/capture.py` or `design/capture.mjs`, seeded by `adopt`, and `design/screens.json` | Adopt the scaffolding. Step 6 says what the shipped capture asserts and what it leaves to you |
+| The capture, and the screens it opens | `design/capture.js` with `design/capture.py`, `design/capture.mjs` or both, seeded by `adopt`, and `design/screens.json` | Adopt the scaffolding. Step 6 says which driver to run, what the shipped capture asserts and what it leaves to you |
 | The artboard generator, and the components it draws with | `design/build.py` or `design/build.mjs`, seeded by `adopt`; the components are the project's | Adopt the scaffolding. It ships the palette, the scales and one entry point, and no component |
 
 Report an absent input and ask. A guessed constraint reads as a settled one on
@@ -117,13 +117,38 @@ clipped cell, a ragged column and a substituted font all reproduce faithfully
 in an artboard that passes.
 
 **A project is handed a capture and may replace it.** `adopt` seeds `design/`
-with `capture.js`, the contract both drivers evaluate in the page, plus
-`capture.py` for the python pack or `capture.mjs` for the typescript pack, and
+with `capture.js`, the contract both drivers evaluate in the page, and
 `screens.json` naming the screens and where the app answers. The capture points
 at a URL where the app already answers and starts nothing itself. The driver
 owns `<Name>.dc.html` and `<Name>.classes.html` for every name in
 `screens.json`, so a project that wants different files replaces the driver. A
 second one beside it writes files the driver already owns.
+
+**Which driver is there depends on the pack, and `none` gets both.** The python
+packs receive `capture.py`, `typescript` receives `capture.mjs`, and `none`
+receives the pair, because a driver needs a browser rather than a language and
+a gate list naming no toolchain says nothing about which runtime the machine
+has.
+
+**Run the one whose runtime is present.** `capture.py` runs under `uv run
+--with playwright`; `capture.mjs` runs under node with puppeteer resolving from
+the project's `node_modules`. Read the directory, then the machine:
+
+```sh
+ls design/capture.py design/capture.mjs
+uv --version && node --version
+```
+
+Where both runtimes answer, take the driver written in the language the project
+is written in. Both write the same bytes from the same screen, and
+`tests/test_design.py` in the agentkit checkout holds them to it.
+
+**The stamp names the driver that wrote the artboard.** Every root carries
+`data-captured-driver`, reading `capture.py` or `capture.mjs`, beside the
+route, the commit, the time, the viewport and the digest. Two artboards in one
+directory can have come off two runtimes, and a box that differs between them
+is a browser difference before it is a screen change. Say which driver produced
+the artboards in the pull request.
 
 ## 7. A second read against the guide
 

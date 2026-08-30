@@ -56,8 +56,9 @@ Cut to 24:
 > If two people collaborate, decisions are team decisions (not shipped, not
 > personal). Skill precedence doesn't cut it: two skills of one name both load.
 
-`probes/skill_precedence.py` prints the roots a loader concatenates, and it
-contradicts both drafts. Two skills of one name both load, and a typed name
+`probes/skill_precedence.py` in the agentkit checkout prints the roots a loader
+concatenates, and it contradicts both drafts. `seeds.json` seeds that probe
+nowhere, so a project reads the result here and runs the probe there. Two skills of one name both load, and a typed name
 reaches the personal copy, so a project's committed skill loses to one its
 reader already had (#40). The true sentence runs 48 words:
 

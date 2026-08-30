@@ -20,8 +20,8 @@ Four kinds of file, and only the first is ever replaced whole:
   list is deleted from the project while it still matches its recorded hash.
 - `.agentkit/gates.toml`, `team.md` and `phase.json` are the team layer,
   rendered from the answers and seeded once.
-- `CLAUDE.md` and `.github/workflows/` are rendered from the answers and
-  seeded once.
+- `CLAUDE.md`, `.github/workflows/` and one command named after the project are
+  rendered from the answers and seeded once.
 - `.gitignore` gets a delimited block, rewritten on every run, with every line
   outside it left alone.
 
@@ -30,6 +30,10 @@ own `bin/verify`, and a pack whose gates run pnpm installs first so the check
 gate has a `tsc` to resolve. A red gate or a failed install is reported and
 leaves this at 0, because the files are written whatever either says.
 `--no-gates` skips the install with the run.
+
+A first write also creates the three `effort:` labels on the project's own
+remote, and no `area:` label. No remote, no `gh` and no authentication are each
+reported and leave the adoption written. `--no-labels` skips it.
 
 `--check` writes nothing and answers a different question: how far the template
 has moved since this project adopted it, which of the files it copies changed,
@@ -43,6 +47,7 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -104,15 +109,21 @@ TEMPLATE_ONLY = "template_only"
 
 # The third list in `seeds.json`: one file list per language pack, for a file
 # only the pack's own toolchain can run. The design capture has to be here:
-# reading computed styles needs a browser driver, and the driver a project can
-# install is the one its pack already declares. `ruff.toml` and the two
-# scaffolding tests are here for the same reason, one gate list further on. A
-# gate names the file or nothing does.
+# reading computed styles needs a browser driver, and the driver a language
+# pack can install is the one its pack already declares. `ruff.toml` and the
+# two scaffolding tests are here for the same reason, one gate list further on.
+# A gate names the file or nothing does.
 #
 # Every file named here is subtracted from the directory expansion that would
 # otherwise carry it, and the chosen pack's list is added back. A python project
 # receives `design/capture.py` and never the node driver beside it, which is
 # what keeps a seeded tree free of a script the project cannot run.
+#
+# `none` is the exception and receives both drivers. A driver needs a browser
+# rather than a language: `capture.mjs` needs node, `capture.py` needs
+# playwright, and a gate list naming no language toolchain says nothing about
+# which of those the machine has. `design-process` step 6 runs whichever one is
+# installed and stamps the artboard with the driver that wrote it (#142).
 #
 # A pack's value is a list of template paths, or an object naming the project
 # path each one lands at. `_pack_landings` carries the second form and why.
@@ -161,11 +172,14 @@ STATUSES = (SEEDED, PRESENT, APPENDED, *FILE_STATUSES)
 # `bin/verify`, into a project where nothing runs any of them, and the runner
 # prints a green table over a tree nothing checked (#141).
 #
-# The probes gate goes to `none` and to the two python packs, for the same
-# reason the style gate is everywhere: `seeds.json` seeds `bin/check-probes`
-# and, since #71, `probes/skill_sources.py`, so every pack has something to
-# check. `typescript` is left out because `bin/check-probes` is a Python script
-# and a node project should not take an interpreter to run one gate.
+# The probes gate goes to every pack, for the same reason the style gate does:
+# `seeds.json` seeds `bin/check-probes` and `probes/skill_sources.py`, so every
+# pack has something to check. `typescript` was left out on the grounds that a
+# node project should not take a Python interpreter for one gate. That does not
+# separate the two gates: `bin/check-style` carries the same
+# `#!/usr/bin/env python3` shebang and every pack declares it, and `bin/adopt`
+# is a Python script too, so no project reaches a gate list without python3 on
+# the machine (#124).
 #
 # A project that drops rule 9 drops this gate with it. `bin/check-probes`
 # passes on an empty `probes/` and fails on an absent one with `Drop the probes
@@ -186,6 +200,7 @@ PACKS: dict[str, tuple[tuple[str, str, str | None], ...]] = {
     ),
     "typescript": (
         ("style", "bin/check-style .", None),
+        ("probes", "bin/check-probes", None),
         ("check", "pnpm check", None),
         ("test", "pnpm test", None),
     ),
@@ -206,7 +221,12 @@ PACKS: dict[str, tuple[tuple[str, str, str | None], ...]] = {
 
 @dataclass(frozen=True)
 class Outcome:
-    """One file's result. `rel` is posix, relative to the project root."""
+    """One file's result. `rel` is posix, relative to the project root.
+
+    `seed_labels` reuses the row for a label, where `rel` is the label's name
+    and the two statuses read the same way: `seeded` created it, `present`
+    found it there.
+    """
 
     rel: str
     status: str
@@ -926,10 +946,11 @@ doing design for twenty minutes, and a role gate puts a wall exactly there.
 Loaded on demand from `.claude/skills/`, committed, available the moment
 somebody clones. No plugin, no install step.
 
-`pick-work`, as `/work`, says what to do next. `wrap-up`, as `/done`, ends a
-session: the tree is left clean, the prose gets read against STYLE.md, and
-every preference the session stated is written into the file that reads it
-next.
+{entry}
+
+`wrap-up`, as `/done`, ends a session: the tree is left clean, the prose gets
+read against STYLE.md, and every preference the session stated is written into
+the file that reads it next.
 
 Updating this scaffolding runs `bin/adopt` from the agentkit checkout it came
 from. That tool, the `adopt` skill driving it and the `/agentkit` command are
@@ -975,16 +996,33 @@ def role_table(template: Path) -> str:
     ).rstrip("\n")
 
 
-def router(template: Path, answers: dict[str, str]) -> str:
+def entry_line(slug: str) -> str:
+    """How the router names the way into a session, with the command or without it.
+
+    A project whose name slugifies to nothing, or to a command `seeds.json`
+    already seeds, gets no command of its own, and a router naming one it does
+    not have is a broken instruction.
+    """
+    if not slug:
+        return "`pick-work`, as `/work`, says what to do next, off this project's own board."
+    return (
+        f"`/{slug}` is where a session starts: the three layers above, then\n"
+        f"`.agentkit/phase.json`, then where the last session stopped. `pick-work`, as\n"
+        "`/work`, reads the board from there."
+    )
+
+
+def router(template: Path, answers: dict[str, str], slug: str = "") -> str:
     """The project's `CLAUDE.md`, rendered from the answers `adopt` asked for."""
     return ROUTER.format(
         name=answers["name"],
         summary=answers["summary"],
         roles=role_table(template),
+        entry=entry_line(slug),
     )
 
 
-def seed_router(template: Path, project: Path, answers: dict[str, str]) -> Outcome:
+def seed_router(template: Path, project: Path, answers: dict[str, str], slug: str = "") -> Outcome:
     """Write the router when the project has none, and touch an existing one never.
 
     A router is the file a project is most likely to have written itself, and
@@ -1001,13 +1039,95 @@ def seed_router(template: Path, project: Path, answers: dict[str, str]) -> Outco
     target = project / ROUTER_REL
     if target.is_file():
         return Outcome(ROUTER_REL, PRESENT)
-    target.write_text(router(template, answers))
+    target.write_text(router(template, answers, slug))
     return Outcome(ROUTER_REL, SEEDED)
 
 
 def plan_router(project: Path) -> Outcome:
     """Whether a write would seed the router, writing nothing."""
     return Outcome(ROUTER_REL, PRESENT if (project / ROUTER_REL).is_file() else SEEDED)
+
+
+# ---------------------------------------------------------------------------
+# The command named after the project, which is where a session starts
+
+
+COMMANDS_DIR = ".claude/commands"
+
+# A slash command's name is its file name, so a project name with a space or a
+# capital in it has to become one: `Mac Hours` seeds `/mac-hours`.
+COMMAND_SLUG = re.compile(r"[^a-z0-9]+")
+
+# Rendered per project and seeded once, the way `CLAUDE.md` and the two
+# workflows are, so it carries no manifest row and no rerun replaces it.
+# `seeds.json` cannot hold it: every path there is a byte copy, and this one is
+# named after the project it lands in and says the project's name back.
+#
+# It starts a session and `/work` reads the board, which is the split #146
+# settled. Both files say which is which, because two commands that both answer
+# "what now" and neither of which says how they differ is one command's worth
+# of use and two commands' worth of reading.
+#
+# `shaping` is named on its own, because a project in that phase has no board
+# and `pick-work` says as much. The next move there is `shape`.
+COMMAND = """---
+description: Start working on {slug}, from the layers, the phase and the last session
+---
+This is where a session on {name} starts.
+
+Read the three layers rule 0 names, in order: `CLAUDE.md`, then
+`.agentkit/team.md`, then `.agentkit/local.md` where there is one. Then read
+`.agentkit/phase.json`, which decides what comes next.
+
+**`shaping`.** There is no board worth reading yet. Run the `shape` skill in
+`.claude/skills/shape/`, which asks this project for the constraints rules 1 to
+8 hold open, and say so rather than proposing work.
+
+**`building`.** Say where the last session stopped: the branch, the open pull
+requests, whether the tree is clean, and what `bin/verify` printed. Then run
+`/work`, which reads the board and proposes what to pick up.
+
+Report what you found and wait. Nothing starts without a yes.
+"""
+
+
+def command_name(name: str) -> str:
+    """A project name as a slash command name, empty when nothing survives it."""
+    return COMMAND_SLUG.sub("-", name.lower()).strip("-")
+
+
+def project_command(template: Path, project: Path, answers: dict[str, str]) -> tuple[str, str]:
+    """The slug this project's command takes, and what stopped it being one.
+
+    A name that slugifies to nothing falls back to the directory name, which is
+    what the first adoption used. A slug matching a command `seeds.json`
+    already seeds is refused: that file is a byte copy replaced on every rerun,
+    so a rendered command written there would be overwritten by the next
+    adoption and the project would lose its entry point without being told.
+    """
+    slug = command_name(answers["name"]) or command_name(project.name)
+    if not slug:
+        return "", f"{answers['name']!r} carries no letter or digit, so it names no command"
+    if f"{COMMANDS_DIR}/{slug}.md" in {rel for rel, _ in seeds(template)}:
+        return "", f"/{slug} is a command this template already seeds, so nothing was rendered"
+    return slug, ""
+
+
+def command_files(answers: dict[str, str], slug: str) -> dict[str, str]:
+    """The one rendered command, keyed by the file name it lands at."""
+    return {f"{slug}.md": COMMAND.format(name=answers["name"], slug=slug)}
+
+
+def seed_command(project: Path, answers: dict[str, str], slug: str) -> list[Outcome]:
+    """Write the project's own command when it is absent, and leave any existing one alone."""
+    if not slug:
+        return []
+    return _seed_once(project, COMMANDS_DIR, command_files(answers, slug))
+
+
+def plan_command(project: Path, slug: str) -> list[Outcome]:
+    """Whether a write would seed the project's own command, writing nothing."""
+    return _plan_once(project, COMMANDS_DIR, (f"{slug}.md",)) if slug else []
 
 
 # ---------------------------------------------------------------------------
@@ -1374,6 +1494,108 @@ def personal_collisions(template: Path) -> tuple[Path | None, list[str]]:
 
 
 # ---------------------------------------------------------------------------
+# The board's labels, the one thing a write reaches outside the project directory
+
+
+# The three `effort:` labels, as name, description and hex colour. Read off
+# `gh label list` on `ksallee/agentkit`, 2026-08-30.
+#
+# Effort transfers and areas do not. Each description below says what it costs
+# to verify something, which reads the same in any project that adopts this. An
+# `area:` label names one project's own parts, so nothing here seeds one and
+# `shape` is what settles them: a seeded taxonomy would be somebody else's
+# labels written into a place that reads as decided, and a repository created
+# for a first adoption carries GitHub's ten defaults, every one of which is a
+# kind under rule 15 and none of which is an area (#125).
+#
+# `.agentkit/process.toml` stays unwritten for the same reason. Its `[labels]`
+# section names the area prefix, so rules 15 and 16 go on being unsatisfiable
+# until areas exist. This narrows that gap and does not close it, and `report`
+# says so.
+EFFORT_LABELS = (
+    ("effort: quick", "Verifiable with fixtures alone", "c2e0c6"),
+    ("effort: session", "Needs a real adoption or a design call", "fbca04"),
+    ("effort: blocked", "Needs a decision that does not exist yet", "b60205"),
+)
+
+# How many labels `gh label list` is asked for. GitHub pages at 30 by default,
+# and a repository with more than that would report an existing `effort:` label
+# as absent and fail the create that follows.
+LABEL_LIMIT = "200"
+
+
+def _gh(project: Path, *args: str) -> subprocess.CompletedProcess[str] | None:
+    """Run `gh` against the project's remote, or `None` when it could not be run.
+
+    `gh` reads the working directory's remote, so this runs in the project and
+    never in the agentkit checkout. Running it here would put the labels on
+    `ksallee/agentkit`, which is the same mistake `shape` makes when it is run
+    from the wrong directory.
+    """
+    try:
+        return subprocess.run(
+            ["gh", *args],
+            cwd=project,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def _first_line(done: subprocess.CompletedProcess[str]) -> str:
+    """The first line `gh` complained with, for a report that has to fit on one."""
+    said = (done.stderr or done.stdout).strip().splitlines()
+    return said[0] if said else "gh said nothing"
+
+
+def seed_labels(project: Path) -> tuple[list[Outcome], str]:
+    """Create the three `effort:` labels on the project's remote.
+
+    One row per label, and a problem line that is empty when every one of them
+    was read and every absent one created. A machine with no `gh`, a directory
+    with no remote and an unauthenticated `gh` all end at a problem line and no
+    row: the adoption is written whatever GitHub answers, and a label call that
+    failed is not a write that failed.
+
+    The existing names are read first, so a rerun over a repository that
+    already carries them writes nothing and reports each one `present`. `gh
+    label create` exits non-zero on a label that exists, and telling that apart
+    from a permission failure means matching a message GitHub owns.
+    """
+    # Asked of git before gh, because a directory with no remote is the common
+    # case on a first adoption and `gh` answers it slowly and from the network.
+    remote = _git(project, "remote")
+    if remote is None or remote.returncode != 0 or not remote.stdout.strip():
+        return [], "this project has no git remote, so there is no board to label"
+
+    listed = _gh(project, "label", "list", "--limit", LABEL_LIMIT, "--json", "name")
+    if listed is None:
+        return [], "this machine has no gh, so no label was read or written"
+    if listed.returncode != 0:
+        return [], _first_line(listed)
+    try:
+        have = {row["name"] for row in json.loads(listed.stdout)}
+    except (ValueError, TypeError, KeyError):
+        return [], "gh answered something that is not a label list"
+
+    out: list[Outcome] = []
+    for name, description, colour in EFFORT_LABELS:
+        if name in have:
+            out.append(Outcome(name, PRESENT))
+            continue
+        made = _gh(project, "label", "create", name, "--description", description, "--color", colour)
+        if made is None:
+            return out, "gh could not be run"
+        if made.returncode != 0:
+            return out, _first_line(made)
+        out.append(Outcome(name, SEEDED))
+    return out, ""
+
+
+# ---------------------------------------------------------------------------
 # The command
 
 
@@ -1513,6 +1735,9 @@ def report(
     ignore: Outcome,
     skills: tuple[Path | None, list[str]],
     dry: bool,
+    command: list[Outcome] = (),
+    command_problem: str = "",
+    labels: tuple[list[Outcome], str] | None = None,
 ) -> None:
     """Name every file and both sides of every kept edit.
 
@@ -1532,6 +1757,12 @@ def report(
     print(f"\nworkflow {project / WORKFLOWS_DIR}")
     for row in flows:
         print(f"  {row.status:<9} {row.rel}")
+    print(f"\ncommand  {project / COMMANDS_DIR}")
+    for row in command:
+        print(f"  {row.status:<9} {row.rel}   the entry point a session starts at")
+    if command_problem:
+        print(f"  {command_problem}")
+        print("  /work still reads the board, and CLAUDE.md names it in place of a command.")
     print(f"\nignore   {project / GITIGNORE_REL}")
     print(f"  {ignore.status:<9} {ignore.rel}")
     if ignore.status == KEPT:
@@ -1574,6 +1805,29 @@ def report(
             "Rename one, or move the personal copy aside. That directory was read and never\n"
             "written to, and the run continued."
         )
+
+    print("\nlabels   the three effort: labels, on the project's own remote")
+    if labels is None:
+        print(
+            "  a first write creates them and no area: label"
+            if dry
+            else "  not a first write, so no label was read or created"
+        )
+    else:
+        rows, problem = labels
+        for row in rows:
+            print(f"  {row.status:<9} {row.rel}")
+        if problem:
+            print(f"  {'nothing more' if rows else 'nothing'} was created: {problem}")
+            print("  The adoption is written. `gh label create` takes the rest by hand.")
+    print(
+        "\nNo area: label was created, and rules 15 and 16 want one on every issue and\n"
+        "pull request. Areas name this project's own parts, and `shape` settles them.\n"
+        f"Run `shape` in {project}: gh reads the working directory's remote, so a run\n"
+        "from the agentkit checkout files against agentkit. `.agentkit/process.toml`\n"
+        "stays unwritten until the areas exist, and bin/check-process reports its two\n"
+        "checks absent until it does."
+    )
 
     counts = {status: sum(1 for r in files if r.status == status) for status in FILE_STATUSES}
     print("\n" + "  ".join(f"{n} {status}" for status, n in counts.items()))
@@ -1620,6 +1874,11 @@ def main(argv: list[str] | None = None) -> int:
         "--no-gates",
         action="store_true",
         help="Skip the gate run a first write ends with, and the install before it.",
+    )
+    ap.add_argument(
+        "--no-labels",
+        action="store_true",
+        help="Skip the three effort: labels a first write creates on the project's remote.",
     )
     args = ap.parse_args(argv)
 
@@ -1671,20 +1930,44 @@ def main(argv: list[str] | None = None) -> int:
     # and every later run would look like the first one.
     first_run = not (project / MANIFEST_REL).is_file()
 
+    slug, command_problem = project_command(args.template, project, answers)
+    labels: tuple[list[Outcome], str] | None = None
+
     if args.write:
         files = write(args.template, project, pack)
         team = seed_team(project, answers)
         flows = seed_workflows(project, answers)
-        route = seed_router(args.template, project, answers)
+        # After the tracked write, so a slug colliding with a seeded command
+        # finds that command already on disk and leaves it alone.
+        command = seed_command(project, answers, slug)
+        route = seed_router(args.template, project, answers, slug)
         ignore = seed_gitignore(project, pack)
+        # A first write only. The labels belong to the repository rather than
+        # to the adoption, so a rerun that found them edited would be arguing
+        # with whoever edited them.
+        if first_run and not args.no_labels:
+            labels = seed_labels(project)
     else:
         files = plan(args.template, project, pack)
         team = plan_team(project)
         flows = plan_workflows(project)
+        command = plan_command(project, slug)
         route = plan_router(project)
         ignore = plan_gitignore(project, pack)
     skills = personal_collisions(args.template)
-    report(project, files, team, flows, route, ignore, skills, dry=not args.write)
+    report(
+        project,
+        files,
+        team,
+        flows,
+        route,
+        ignore,
+        skills,
+        dry=not args.write,
+        command=command,
+        command_problem=command_problem,
+        labels=labels,
+    )
     if args.write and first_run and not args.no_gates:
         run_gates(project, pack)
     return 0

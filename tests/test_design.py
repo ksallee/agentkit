@@ -81,6 +81,19 @@ class TestBothDriversAgree:
             for field in stamp_fields():
                 assert re.search(rf"\b{field}\b", body), f"{driver.name} names no {field}"
 
+    def test_each_one_stamps_the_file_name_it_is_run_as(self):
+        """#142. The `none` pack receives both, so an artboard says which one wrote it.
+
+        Two artboards in one directory can have come off two runtimes, and a
+        box that differs between them is a browser difference before it is a
+        screen change.
+        """
+        assert "driver" in stamp_fields()
+        for driver in DRIVERS:
+            found = re.search(r"DRIVER_NAME = ['\"]([\w.]+)['\"]", text(driver))
+            assert found, f"{driver.name} declares no DRIVER_NAME"
+            assert found.group(1) == driver.name
+
     def test_each_one_takes_the_same_slice_of_the_digest(self):
         found = {re.search(r"DIGEST_CHARS = (\d+)", text(driver)).group(1) for driver in DRIVERS}
         assert found == {"16"}

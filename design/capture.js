@@ -30,6 +30,11 @@
 // one digest came off one screen state; a designer working on a duplicate
 // compares that field and learns whether the reference moved, which a commit
 // alone cannot answer over a dirty tree.
+//
+// Its driver field is the file name of the driver that wrote the artboard. The
+// `none` pack receives both, so two artboards in one directory can have come
+// off two runtimes, and a box that moved between them is a difference in the
+// browser rather than in the screen.
 
 globalThis.agentkitCapture = (() => {
 	// The properties a designer edits. The whole computed set runs to about 340
@@ -242,10 +247,10 @@ globalThis.agentkitCapture = (() => {
 		const root =
 			(form.root || 'background-color: #ffffff; color: #111111') +
 			`; width: ${width}px; height: ${height}px; box-sizing: border-box; overflow: hidden`;
-		const marks = ['route', 'commit', 'at', 'viewport', 'digest']
+		const marks = ['route', 'commit', 'at', 'viewport', 'digest', 'driver']
 			.map((key) => `data-captured-${key}="${attr(stamp[key])}"`)
 			.join(' ');
-		const comment = ['route', 'commit', 'at', 'viewport', 'digest']
+		const comment = ['route', 'commit', 'at', 'viewport', 'digest', 'driver']
 			.map((key) => `${key}=${stamp[key]}`)
 			.join(' ');
 		return `<!-- captured ${comment} -->\n<div ${marks} style="${attr(root)}">\n${form.body}\n</div>\n`;

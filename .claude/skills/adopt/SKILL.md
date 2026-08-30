@@ -93,7 +93,7 @@ back. What brings it back is a question with no options in it.
 | Answer | Flag | Default |
 |---|---|---|
 | Which gates the project runs, what CI installs, and which design driver arrives | `--pack python\|typescript\|python+typescript\|none` | **None. This is the one it will not guess.** |
-| The project's name | `--name` | The directory name. |
+| The project's name | `--name` | The directory name. It also names the project's own slash command. |
 | One line saying what it is | `--summary` | Left unanswered in `team.md` and in `CLAUDE.md`, marked as such. |
 | Who reviews and who merges | `--merge` | The author does not merge their own pull request. |
 | Shaping or building | `--phase` | `building` when the target has a commit, `shaping` when it does not. |
@@ -106,12 +106,16 @@ wrong. Ask.
 
 **The pack also selects the design pipeline's browser driver.** The python
 packs receive `design/capture.py` and `design/build.py`, `typescript` receives
-`design/capture.mjs` and `design/build.mjs`, and `none` receives neither. Every
-pack receives `design/capture.js`, the contract those two share, which runs
-nothing on its own. So `none` seeds the design skills, `design/screens.json`
-and that contract, and nothing that executes `design-process` step 6. A project
-answering `none` because it runs no gates gets a design pipeline it cannot run
-and finds out at its first capture. Say that whenever `none` is on the table.
+`design/capture.mjs` and `design/build.mjs`, and `none` receives both pairs.
+Every pack receives `design/capture.js`, the contract the drivers share, and
+`design/screens.json`.
+
+**`none` is the pack for a project whose toolchain is neither python nor
+node.** A Go, Rust, Elixir or plain-HTML project takes it and gets a gate list
+that runs on day one: style and probes, the two gates that name no language
+toolchain. It gets both capture drivers, and `design-process` step 6 runs
+whichever runtime the machine has. What it gets no gate over is the project's
+own code, and that is the sentence to say whenever `none` is on the table.
 
 **A first write ends by running the gate list it seeded.** `bin/adopt` invokes
 the project's own `bin/verify` and prints its table, so the operator learns on
@@ -201,14 +205,62 @@ directory a pnpm gate declares.
 16 and 24 are code and work on the first pull request. Rule 15's label taxonomy
 and rule 19's forbidden paths read `.agentkit/process.toml`, and `adopt` seeds
 no such file, because the area prefix is the project's own answer. Both report
-`absent` in the run summary until somebody writes it. Say that to the operator
-after the write, and offer to write the file from `gh label list`.
+`absent` in the run summary until somebody writes it.
+
+**Never offer to write `process.toml` from `gh label list`.** A repository
+created for a first adoption carries GitHub's ten stock labels, every one of
+them a kind under rule 15 and none of them an area, so a taxonomy generated
+from that list declares an area prefix matching nothing and rule 15 fails every
+pull request. Two cold runs reported it independently (#125). The file waits
+for areas that exist.
+
+## The three `effort:` labels a first write creates
+
+`adopt` creates `effort: quick`, `effort: session` and `effort: blocked` on the
+project's own remote, with the descriptions this scaffolding uses, and creates
+no `area:` label. Effort says what it costs to verify something and reads the
+same in any project. Areas name one project's own parts, and `shape` is what
+settles them, so a seeded area taxonomy would be somebody else's labels in a
+place that reads as decided.
+
+Four things come with it, and all four go in the report:
+
+- **A first write only.** A rerun reads no label and writes none.
+- **It reaches the network, and a failure costs the adoption nothing.** No git
+  remote, no `gh` and an unauthenticated `gh` are each named on one line, and
+  the files are written either way. `--no-labels` skips it.
+- **A label already on the board comes back `present`.** The existing names are
+  read before anything is created, so a rerun on a project that has them errors
+  on none.
+- **The areas are still missing.** Rules 15 and 16 want an `area:` label plus a
+  kind on every issue and pull request, and this narrows that gap rather than
+  closing it. Say so, name `shape` as where the areas come from, and name the
+  directory it runs in: `gh` reads the working directory's remote, so `shape`
+  run from the agentkit checkout files against `ksallee/agentkit` (#128).
+
+## The project gets a command named after itself
+
+`adopt` renders one more file: `.claude/commands/<project>.md`, the entry point
+a session starts at. It reads the three layers rule 0 names and
+`.agentkit/phase.json`, then says where the last session stopped.
+
+| Question | Answer |
+|---|---|
+| What it does against `/work` | The project's command is the entry point and hands over. `/work` reads the board. Both files say which is which |
+| What it does in `shaping` | Names `shape` as the next move. A project in that phase has no board, and `pick-work` already says an empty board is no backlog |
+| Where the name comes from | The project name, lowercased, with every run of other characters becoming one hyphen: `CSS Fun Experiments` seeds `/css-fun-experiments`. A name that survives none of that falls back to the directory name |
+| Where it lives | Rendered per project like `CLAUDE.md` and the two workflows, so it carries no manifest row, and a rerun leaves an edited copy exactly as it found it |
+
+A name that slugifies to a command `seeds.json` already seeds, `work` or
+`done`, is refused and the report says why. That file is a byte copy replaced
+on every rerun, so a rendered command written there would be overwritten and
+the project would lose its entry point without being told.
 
 ## The router is seeded once and replaced never
 
-`CLAUDE.md`, the three `.agentkit/` files and the two workflows are rendered
-from the answers rather than copied, so they carry no manifest row and no rerun
-touches them. A workflow this template replaced would leave the project's
+`CLAUDE.md`, the three `.agentkit/` files, the two workflows and the command
+named after the project are rendered from the answers rather than copied, so
+they carry no manifest row and no rerun touches them. A workflow this template replaced would leave the project's
 version at `gates.yml.local`, which GitHub runs nowhere, so the project would
 be running this template's copy without being told. Two outcomes, and neither
 writes over anything:
@@ -391,3 +443,6 @@ by hand. Read the two files side by side when the template's rule set moves.
 | "I answered rules 1 to 8 from the codebase." | Those are the project's to lock. A guess written there reads as settled to the next session. |
 | "I added a gate, so I added a step to the workflow." | The workflow names no gate. `bin/verify` reads the declaration, and a step naming one is the copy that goes stale. |
 | "The project has a `gates.yml` already, so CI is covered." | `adopt` reports `present` and writes nothing. Read theirs and say whether it runs `bin/verify`. |
+| "The repository had no labels, so I wrote `process.toml` from `gh label list`." | GitHub's ten defaults are every one of them a kind. The area prefix that generates matches nothing, and rule 15 then fails every pull request. |
+| "The label call failed, so I stopped." | The files are written whatever GitHub answers. Report the line and carry on. |
+| "`/work` exists, so the project-named command is a duplicate." | One starts a session, the other reads the board. Both files say which, and the report names the entry point. |
