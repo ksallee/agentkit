@@ -82,8 +82,8 @@ and defaults to `shaping` when there is no commit.
 
 ## The six answers
 
-Five are in the table below, and `surface` is the sixth, under `### The one
-design setting`. Four carry a default worth accepting.
+All six are in the table below, and `surface` has a section of its own under
+`### The one design setting`. Five carry a default worth accepting.
 
 **Every question carries its options and a recommendation.** That is the
 property, and it is the one that failed in #128: four rounds there were spent
@@ -119,6 +119,7 @@ back. What brings it back is a question with no options in it.
 | One line saying what it is | `--summary` | Left unanswered in `team.md` and in `CLAUDE.md`, marked as such. |
 | Who reviews and who merges | `--merge` | The author does not merge their own pull request. |
 | Shaping or building | `--phase` | `building` when the target has a commit, `shaping` when it does not. |
+| Where a finished design lands | `--surface canvas\|file, <path>\|none` | Unanswered, and `team.md` says so until somebody picks one. |
 
 **The pack has no default and adopt refuses to write the team layer without
 it.** A gate list naming a command the project does not run makes rule 17
@@ -431,6 +432,18 @@ commit.
 and a list. An adoption report is read once, by somebody deciding whether they
 can start working, and a wall of detail buries the two lines they needed. Put
 anything longer in an issue and name it in the list.
+
+**What is left names `.agentkit/local.md`.** Rule 0 has three layers and an
+adoption fills two. The personal layer is nobody's to guess: it says how one
+person wants work delivered and which role guide out of `docs/roles/` applies,
+and `CLAUDE.md`, the project's own command and the role table all send a session
+to read it. An adoption that ends without naming it leaves three files pointing
+at a file nobody has been asked to write, and a role guide then gets picked from
+nothing.
+
+Say what goes in it and leave it to the operator. **Never write a stub.**
+`wrap-up` gives the reason: an empty file and a person nobody has asked look
+identical, and rule 0 depends on telling them apart.
 
 **What is left names `design/screens.json`.** It seeds one screen called `Home`
 at `/` against `http://localhost:5173`, a guess made before anybody saw the
