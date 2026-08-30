@@ -114,6 +114,27 @@ commit, the time, the frame size and a digest of the captured markup. Capture
 again and compare the digest: a different one means the real screen moved while
 you were working, and a commit alone cannot tell you that over a dirty tree.
 
+A screen nobody has built is drawn by the generator, into the same directory:
+
+```sh
+python3 design/build.py   # python
+node design/build.mjs     # typescript
+```
+
+One generator writes every frame, so a number or a label changes in one place
+and the frames stay consistent. It ships a greyscale palette, a type scale, a
+spacing scale and a frame size as defaults, and `Palette.dc.html` renders
+whatever those say. Edit the constants and the artboard follows. Greyscale is
+where a wireframe starts, and colour and the type pair stay your call, so
+nothing checks that an artboard is grey.
+
+Add a frame by adding a function and a row to `ARTBOARDS`, and it gets a slot in
+`design/canvas.json` on the next run. The generator refuses to write a name
+`screens.json` gives the capture, and it reserves a canvas slot for each one
+instead. A generated artboard stamps `data-generated-by`, its frame size and a
+digest, and no commit and no clock, so a rerun that changed nothing writes the
+same bytes and a diff on `design/` is a design change every time.
+
 ## Checking a design change
 
 Look at it, then measure it. A capture measures every box against the live app

@@ -19,7 +19,7 @@ This skill is the method. Six inputs are the project's.
 | Where a finished design lands | `.agentkit/team.md`, `## Design`, `surface` | Ask. Step 8 has three answers and no default |
 | Which reference list is in play | `.agentkit/team.md`, `## Design`, `references` | `curated`, the `design-references` file |
 | The capture, and the screens it opens | `design/capture.py` or `design/capture.mjs`, seeded by `adopt`, and `design/screens.json` | Adopt the scaffolding. Step 6 says what a capture has to do |
-| The artboard generator | the project's design directory | Step 3 says what it needs |
+| The artboard generator, and the components it draws with | `design/build.py` or `design/build.mjs`, seeded by `adopt`; the components are the project's | Adopt the scaffolding. It ships the palette, the scales and one entry point, and no component |
 
 Report an absent input and ask. A guessed constraint reads as a settled one on
 the artboard, and whoever never agreed to it finds out at review.
