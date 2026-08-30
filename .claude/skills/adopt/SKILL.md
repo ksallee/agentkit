@@ -9,6 +9,28 @@ description: Seed the agentkit scaffolding into a project, or update a project t
 Never write `.agentkit/manifest.json` by hand, and never copy a seeded file
 with `cp`. An improvised manifest lies on the next update.
 
+## Say the request back before anything else
+
+The request arrives as a sentence in somebody's own words: "adopt agentkit
+here", "set up the repo in ~/dev/thing", "update the scaffolding". Two
+phrasings of one intent can land on different paths and nothing downstream
+reports that they did.
+
+Say back two things and wait for a yes:
+
+- **The directory**, as an absolute path. "Here" is the session's working
+  directory, and a session started somewhere else adopts somewhere else.
+- **First adoption or update**, and what said so. `.agentkit/manifest.json`
+  present means the project was adopted before and this run replaces seeded
+  files. Absent means nothing here has been seeded.
+
+`bin/adopt` reads the manifest for itself, so a misreading costs what the
+session does around the tool. A first adoption needs all six answers before
+anything is written. An update has them in `.agentkit/team.md` already, and
+what it needs read back is which files a rerun replaces and which it keeps. The
+wrong directory means every one of those questions was asked about the wrong
+project.
+
 ## Preconditions
 
 Check these and print the fix. Don't work around them.
