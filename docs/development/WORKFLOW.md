@@ -15,9 +15,9 @@ transcript gets read once. An agent is the same reader at the extreme: it
 arrives with no memory of last week and acts on whatever it is handed.
 
 Rule 0 sets which of the three layers wins. This file is the shipped layer, so
-`.agentkit/team.md` overrides it on a project convention and `context.md`
-overrides it on taste. A rule below that sends its default to the team layer
-does so because the answer is one nobody can hold privately.
+`.agentkit/team.md` overrides it on a project convention and
+`.agentkit/local.md` overrides it on taste. A rule below that sends its default
+to the team layer does so because the answer is one nobody can hold privately.
 
 Every word committed follows [`STYLE.md`](STYLE.md).
 
@@ -50,10 +50,10 @@ whether an issue body is honest and current (22, 23). A person reads those.
 
 ## Roles
 
-**This file names no roles.** A role is a line in one person's `context.md`
-that selects one guide out of `docs/` and excludes the others. That selection
-is the whole mechanism. `adopt` seeds the guides as skeletons, and a skeleton
-nobody fills is a role the project does not have.
+**This file names no roles.** A role is a line in one person's
+`.agentkit/local.md` that selects one guide out of `docs/` and excludes the
+others. That selection is the whole mechanism. `adopt` seeds the guides as
+skeletons, and a skeleton nobody fills is a role the project does not have.
 
 Add a role when a named risk makes one kind of call somebody's job. mac-hours
 names a designer because its unassigned inbox screen was diagnosed as the thing
@@ -270,15 +270,15 @@ scrubbed fixture is also how a real credential stays out of the tree.
 
 When somebody says how they want something done, write it down, in the layer
 rule 0 assigns it to: the skill or command itself for how a skill behaves,
-`context.md` for how work is delivered to one person, `.agentkit/team.md` for a
-convention the two of them share, these rules for something that would hold in
-any project. A preference living only in one session's transcript is one they
-have to repeat forever.
+`.agentkit/local.md` for how work is delivered to one person,
+`.agentkit/team.md` for a convention the two of them share, these rules for
+something that would hold in any project. A preference living only in one
+session's transcript is one they have to repeat forever.
 
 Two guards. **Never infer a rule from a single instruction.** "Branch it this
 time" is not "always branch". **Never promote one person's preference into the
-shared layers**: the test is whether it applies to everybody, and `context.md`
-is where it goes when it does not.
+shared layers**: the test is whether it applies to everybody, and
+`.agentkit/local.md` is where it goes when it does not.
 
 A capture change skips the issue (rule 10) and merges on green (rule 18). It
 still gets its own branch and pull request, because the pull request is the
