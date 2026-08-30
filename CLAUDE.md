@@ -86,11 +86,21 @@ A rule keeps its number wherever it lives, so a citation survives a move.
 Loaded on demand from `.claude/skills/`, committed, available the moment
 somebody clones. No plugin, no install step.
 
-**`adopt`** seeds this scaffolding into a project and updates it later.
-**`pick-work`**, as `/work`, says what to do next. **`wrap-up`**, as `/done`,
-ends a session: the tree is clean, the prose gets read against STYLE.md, and
-every preference the session stated is written into the file that reads it
-next.
+**`adopt`** seeds this scaffolding into a project and updates it later. It is
+how a project gets everything else here.
+
+Two skills have a slash command, because a command is the one thing a
+`description` cannot advertise. **`pick-work`**, as `/work`, says what to do
+next. **`wrap-up`**, as `/done`, ends a session: the tree is clean, the prose
+gets read against STYLE.md, and every preference the session stated is written
+into the file that reads it next.
+
+The rest are named nowhere. Every `SKILL.md` opens with a `description` written
+to be read at load time, so a list here would be that description again, in a
+file with no way to know a skill arrived. It drifted twice in two days, at #31
+and #34, which is what a second copy does. `tests/test_skills.py` asserts the
+two that stay: a command names a skill that exists, and a skill named here
+exists.
 
 The team layer is data that skills read. Skill precedence doesn't exist: two
 skills of one name both load.
