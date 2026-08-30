@@ -71,7 +71,7 @@ Your `.gitignore` gets a delimited block carrying `.agentkit/local.*`,
 and it is the one file a rerun edits in place. Git reads every line of it on its
 own, so the block is rewritten and every line outside it stays where you put it.
 
-The `adopt` skill asks the six answers the team layer and the router need. The
+The `adopt` skill asks the five answers the team layer and the router need. The
 pack is the one it refuses to guess, because a gate list naming a command you do
 not run makes rule 17 disagree with CI. It also decides which browser driver the
 design pipeline gets: `python` and `python+typescript` take `design/capture.py`,
