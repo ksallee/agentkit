@@ -31,8 +31,8 @@ SUFFIXES = (".md", ".py", ".ts", ".svelte", ".css", ".yml", ".yaml")
 
 # An executable with no suffix is authored prose too, and matching on suffix
 # alone let `bin/` escape its own gate. A tracked file with no extension is in
-# scope when it opens with a shebang, which is what tells a script apart from
-# the LICENSE and Makefile sitting beside it.
+# scope when it opens with a shebang. That separates a script from the LICENSE
+# and Makefile beside it.
 SHEBANG = "#!"
 
 # A file that has to quote the banned patterns in order to define them opts out

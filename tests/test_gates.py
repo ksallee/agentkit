@@ -77,7 +77,7 @@ class TestDeclaration:
             assert set(gate) <= allowed, f"{gate['name']} declares {set(gate) - allowed}"
 
     def test_no_tracked_prose_restates_a_gate_command(self):
-        """Rule 17 names this file and no command, which is why the file exists."""
+        """Rule 17 names this file and no command."""
         tracked = subprocess.run(
             ["git", "ls-files", "*.md", "*.yml", "*.yaml"],
             capture_output=True,
@@ -146,7 +146,7 @@ class TestRunner:
 
 class TestCheckers:
     def test_check_style_reads_the_directory_it_is_given(self, tmp_path):
-        """One copy gates several repositories, which is what a template needs."""
+        """One copy gates several repositories. A template needs that."""
         repo = git_repo(tmp_path / "other", {"a.md": "A sentence with " + chr(8212) + ".\n"})
         done = run(CHECK_STYLE, str(repo))
         assert done.returncode == 1

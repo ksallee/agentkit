@@ -16,8 +16,8 @@ that one as a step in the workflow beside this gate.
 
 Standard library only itself. Each probe runs in a subprocess under the
 interpreter the current virtualenv was built from, because a probe importing
-`hours` succeeds under `.venv/bin/python3` and that is the exact failure this
-gate exists to catch. `-I` on top of that drops PYTHONPATH and the script's own
+`hours` succeeds under `.venv/bin/python3`. That is the failure this gate
+catches. `-I` on top of that drops PYTHONPATH and the script's own
 directory from the path.
 """
 
@@ -30,7 +30,7 @@ import sys
 from pathlib import Path
 
 # A probe prints and exits. `--help` is the cheapest call that proves the file
-# imported cleanly, which is the property rule 9 is actually about.
+# imported cleanly. That is the property rule 9 asks for.
 HELP_TIMEOUT_SECONDS = 30
 
 
