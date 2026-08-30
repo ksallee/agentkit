@@ -2,10 +2,12 @@
 
     uv run pytest tests/test_scaffolding.py
 
-agentkit seeds this file, so a project's `test` gate collects something on its
-first run and the green says the scaffolding is sound instead of saying the
-directory was empty. It is also where a project's own tests go: write them
-beside it, and this file stays as the one agentkit replaces on a rerun.
+agentkit seeds this file into a project whose pack declares `uv run pytest`, so
+that gate collects something on its first run and the green says the
+scaffolding is sound instead of saying the directory was empty. It is also
+where a project's own tests go: write them beside it, and this file stays as
+the one agentkit replaces on a rerun. `tests/scaffolding.test.mjs` is its twin,
+seeded to a pack that declares `pnpm test`.
 
 Everything here reads the team layer and `bin/`, which every adopted project
 has. Nothing here runs a gate. `bin/verify` runs the gates, and one of them

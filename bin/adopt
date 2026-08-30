@@ -25,8 +25,10 @@ Four kinds of file, and only the first is ever replaced whole:
   outside it left alone.
 
 A first write ends by running the gate list it seeded, through the project's
-own `bin/verify`. A red gate is reported and leaves this at 0, because the
-files are written whatever the gates say. `--no-gates` skips the run.
+own `bin/verify`, and a pack whose gates run pnpm installs first so the check
+gate has a `tsc` to resolve. A red gate or a failed install is reported and
+leaves this at 0, because the files are written whatever either says.
+`--no-gates` skips the install with the run.
 """
 
 from __future__ import annotations
@@ -38,6 +40,7 @@ import json
 import shutil
 import subprocess
 import sys
+import time
 from collections.abc import Collection
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -94,15 +97,19 @@ IGNORED_SUFFIXES = (".pyc",)
 TEMPLATE_ONLY = "template_only"
 
 # The third list in `seeds.json`: one file list per language pack, for a file
-# whose contents depend on which toolchain the project runs. The design capture
-# is the only one today, and it has to be: reading computed styles needs a
-# browser driver, and the driver a project can install is the one its pack
-# already declares.
+# only the pack's own toolchain can run. The design capture has to be here:
+# reading computed styles needs a browser driver, and the driver a project can
+# install is the one its pack already declares. `ruff.toml` and the two
+# scaffolding tests are here for the same reason, one gate list further on. A
+# gate names the file or nothing does.
 #
 # Every file named here is subtracted from the directory expansion that would
 # otherwise carry it, and the chosen pack's list is added back. A python project
 # receives `design/capture.py` and never the node driver beside it, which is
 # what keeps a seeded tree free of a script the project cannot run.
+#
+# A pack's value is a list of template paths, or an object naming the project
+# path each one lands at. `_pack_landings` carries the second form and why.
 PER_PACK = "per_pack"
 
 # What happened to one file. `unchanged` wrote nothing. `kept` is the only
@@ -219,6 +226,11 @@ def seeds(template: Path, pack: str = "none") -> list[tuple[str, Path]]:
     seeded. That is how a python project gets the Playwright capture and a
     typescript project the Puppeteer one, out of a template holding both.
 
+    A pack's value is a list of template paths, or an object naming where each
+    one lands. `python+typescript` runs its pnpm gates in `web/`, so the
+    `package.json` this template holds at the root is seeded there, and one
+    file serves both packs instead of two copies drifting apart.
+
     A missing entry raises, on any of the three lists. A seed list naming a file
     nobody wrote is a template that would adopt differently depending on which
     files happened to exist, and an exclusion naming nothing stopped excluding
@@ -231,6 +243,7 @@ def seeds(template: Path, pack: str = "none") -> list[tuple[str, Path]]:
         raise SystemExit(f"seeds.json declares {PER_PACK} and names no list for the {pack} pack")
     withheld = [_named(template, entry) for entry in declared.get(TEMPLATE_ONLY, [])]
     withheld += [_named(template, entry) for names in per_pack.values() for entry in names]
+    landing = _pack_landings(per_pack, pack)
     found: list[tuple[str, Path]] = []
     for entry in declared["tracked"]:
         source = _named(template, entry)
@@ -242,8 +255,22 @@ def seeds(template: Path, pack: str = "none") -> list[tuple[str, Path]]:
             ]
         else:
             found.append((entry, source))
-    found += [(entry, _named(template, entry)) for entry in per_pack.get(pack, [])]
+    found += [(rel, _named(template, entry)) for entry, rel in landing]
     return sorted(found)
+
+
+def _pack_landings(per_pack: dict, pack: str) -> list[tuple[str, str]]:
+    """One pack's entries, as (template path, project path).
+
+    A list seeds each file where the template holds it. An object names the
+    project path instead, for a pack whose gates run somewhere else:
+    `python+typescript` takes `package.json` to `web/package.json`, off the
+    same bytes the `typescript` pack takes to the root.
+    """
+    entries = per_pack.get(pack, [])
+    if isinstance(entries, dict):
+        return list(entries.items())
+    return [(entry, entry) for entry in entries]
 
 
 def _named(template: Path, entry: str) -> Path:
@@ -345,6 +372,11 @@ def write(template: Path, project: Path, pack: str = "none") -> list[Outcome]:
     deleted or corrupt one repairs itself on the next run.
     """
     results = plan(template, project, pack)
+    # Where each seeded path came from. A `per_pack` object lands a file
+    # somewhere other than the template holds it, so the project path is not a
+    # template path and rebuilding one from the other reads a file that is not
+    # there.
+    sources = dict(seeds(template, pack))
     files: dict[str, str] = {}
     gone: set[str] = set()
     for result in results:
@@ -359,7 +391,8 @@ def write(template: Path, project: Path, pack: str = "none") -> list[Outcome]:
             # forward untouched. A run that dropped it would leave the next one
             # unable to tell the file from something the project wrote.
             continue
-        payload = (template / result.rel).read_bytes()
+        source = sources[result.rel]
+        payload = source.read_bytes()
         files[result.rel] = _sha(payload)
         if result.status == UNCHANGED:
             continue
@@ -374,7 +407,7 @@ def write(template: Path, project: Path, pack: str = "none") -> list[Outcome]:
         # Mode travels with the bytes. A seeded `bin/verify` that lost its
         # executable bit cannot be run the way `gates.toml` names it, and the
         # failure is a permission error in CI rather than anything readable.
-        target.chmod((template / result.rel).stat().st_mode & 0o777)
+        target.chmod(source.stat().st_mode & 0o777)
     _record(template, project, files, gone, pack)
     return results
 
@@ -977,7 +1010,7 @@ GITIGNORE_REL = ".gitignore"
 GITIGNORE_START = "# agentkit start"
 GITIGNORE_END = "# agentkit end"
 
-# Five lines, and a language pack owns anything further. `.agentkit/local.*` is
+# Five lines every pack gets, and one a pnpm pack adds. `.agentkit/local.*` is
 # what rule 0 requires: it calls the personal layer gitignored, and a project
 # seeded without the line commits one person's taste to a shared branch.
 # `.claude/worktrees/` is harness state every project running agents produces,
@@ -998,18 +1031,26 @@ GITIGNORE_LINES = (
     "design/canvas.json",
 )
 
+# `node_modules/` matches at any depth, so the one line covers the `web/` a
+# `python+typescript` project installs into as well as a root install. A first
+# write runs `pnpm install` for a pnpm pack, so the directory is there before
+# the adopter's first `git status`, and `pnpm-lock.yaml` beside it stays
+# tracked because CI installs from it.
+GITIGNORE_PNPM_LINES = ("node_modules/",)
 
-def gitignore_block() -> str:
+
+def gitignore_block(pack: str = "none") -> str:
     """The delimited block, which every rerun rewrites in place."""
+    lines = GITIGNORE_LINES + (GITIGNORE_PNPM_LINES if pnpm_dirs(pack) else ())
     return (
         f"{GITIGNORE_START}\n"
         "# Rewritten by the next adoption. Every line outside the block stays.\n"
-        + "".join(f"{line}\n" for line in GITIGNORE_LINES)
+        + "".join(f"{line}\n" for line in lines)
         + f"{GITIGNORE_END}\n"
     )
 
 
-def gitignore(existing: str | None) -> tuple[str | None, str]:
+def gitignore(existing: str | None, pack: str = "none") -> tuple[str | None, str]:
     """What the file becomes and what happened, from what is there now.
 
     A body of `None` means write nothing, and it comes back in two cases. The
@@ -1017,7 +1058,7 @@ def gitignore(existing: str | None) -> tuple[str | None, str]:
     The end marker is where a rewrite stops, so a guess at it would delete
     whatever the project wrote below.
     """
-    block = gitignore_block()
+    block = gitignore_block(pack)
     if existing is None:
         return block, SEEDED
     start = existing.find(GITIGNORE_START)
@@ -1034,19 +1075,20 @@ def gitignore(existing: str | None) -> tuple[str | None, str]:
     return (None, UNCHANGED) if rebuilt == existing else (rebuilt, UPDATED)
 
 
-def seed_gitignore(project: Path) -> Outcome:
+def seed_gitignore(project: Path, pack: str = "none") -> Outcome:
     """Write or refresh the block, and touch no line the project wrote."""
     target = project / GITIGNORE_REL
-    body, status = gitignore(target.read_text() if target.is_file() else None)
+    body, status = gitignore(target.read_text() if target.is_file() else None, pack)
     if body is not None:
         target.write_text(body)
     return Outcome(GITIGNORE_REL, status)
 
 
-def plan_gitignore(project: Path) -> Outcome:
+def plan_gitignore(project: Path, pack: str = "none") -> Outcome:
     """What a write would do to the ignore file, writing nothing."""
     target = project / GITIGNORE_REL
-    return Outcome(GITIGNORE_REL, gitignore(target.read_text() if target.is_file() else None)[1])
+    existing = target.read_text() if target.is_file() else None
+    return Outcome(GITIGNORE_REL, gitignore(existing, pack)[1])
 
 
 # ---------------------------------------------------------------------------
@@ -1155,6 +1197,44 @@ def missing_tools(pack: str) -> list[str]:
     return sorted({name for name in wanted if shutil.which(name) is None})
 
 
+def install_pnpm(project: Path, pack: str) -> None:
+    """Install what the pnpm gates need, in every directory one of them runs in.
+
+    A pack with no pnpm gate installs nothing. `pnpm_dirs` reads the gate
+    list, so the directories are the ones the gates declare and never a second
+    copy of them.
+
+    The `check` gate runs `tsc`, which resolves from `node_modules/.bin`, so
+    without this it fails on a project with no install and says nothing about
+    the project's code. `pnpm dlx tsc --noEmit` in place of an install fails
+    identically on clean source and on a real type error, so it can report
+    neither. `pnpm test` runs `node --test` and needs no install; one install
+    covers both, because both run in the same directory.
+    `probes/node_gates.py` prints all four cases.
+
+    A failed install is printed and the gates run anyway. The adoption is
+    written whatever either says, and a machine with no network gets the same
+    files as one with.
+    """
+    for where in pnpm_dirs(pack):
+        target = project / where
+        if not target.is_dir():
+            print(f"  no {where}/ to install into, and the gates run anyway")
+            continue
+        started = time.monotonic()
+        done = subprocess.run(
+            ["pnpm", "install"],
+            cwd=target,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        print(f"  pnpm install  {where}  {time.monotonic() - started:.1f}s")
+        if done.returncode:
+            print((done.stdout + done.stderr).rstrip())
+            print("  The install failed, and the gates run anyway.")
+
+
 def run_gates(project: Path, pack: str) -> int:
     """Run the gates this adoption seeded and print what they printed.
 
@@ -1167,10 +1247,15 @@ def run_gates(project: Path, pack: str) -> int:
     manifest records it, and an exit code saying otherwise would read as a
     failed write. What a project does about the red gate is the project's.
 
-    An absent toolchain is reported without running anything. `uvx ruff` on a
-    machine with no uv exits non-zero from the runner, under a gate name, with
-    no line saying the machine is what is missing, and a first adoption is
-    exactly when a reader has no basis for telling the two apart.
+    An absent toolchain is reported without running anything, and that check
+    comes before the install so a machine with no pnpm is named rather than
+    crashed into. `uvx ruff` on a machine with no uv exits non-zero from the
+    runner, under a gate name, with no line saying the machine is what is
+    missing, and a first adoption is exactly when a reader has no basis for
+    telling the two apart.
+
+    A pack with pnpm gates installs before the runner. `install_pnpm` carries
+    why.
     """
     print(f"\ngates    {project / TEAM_DIR}/gates.toml")
     if not PACKS[pack]:
@@ -1185,6 +1270,7 @@ def run_gates(project: Path, pack: str) -> int:
         print(f"  nothing ran: this machine has no {', '.join(missing)}")
         print(f"  Install what the pack needs, then run {RUNNER_REL}. The adoption is written.")
         return 0
+    install_pnpm(project, pack)
     print()
     # The runner writes to this process's stdout, and a redirected stdout here
     # is block buffered, so without this every line above lands after it.
@@ -1311,7 +1397,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--no-gates",
         action="store_true",
-        help="Skip the gate run a first write ends with.",
+        help="Skip the gate run a first write ends with, and the install before it.",
     )
     args = ap.parse_args(argv)
 
@@ -1363,13 +1449,13 @@ def main(argv: list[str] | None = None) -> int:
         team = seed_team(project, answers)
         flows = seed_workflows(project, answers)
         route = seed_router(args.template, project, answers)
-        ignore = seed_gitignore(project)
+        ignore = seed_gitignore(project, pack)
     else:
         files = plan(args.template, project, pack)
         team = plan_team(project)
         flows = plan_workflows(project)
         route = plan_router(project)
-        ignore = plan_gitignore(project)
+        ignore = plan_gitignore(project, pack)
     skills = personal_collisions(args.template)
     report(project, files, team, flows, route, ignore, skills, dry=not args.write)
     if args.write and first_run and not args.no_gates:
