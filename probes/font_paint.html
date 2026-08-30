@@ -1,0 +1,155 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>font paint probe</title>
+<!--
+Runs document.fonts.check and a width probe against five families, one per
+failure the assertion in design-process step 6 has to separate. Served by
+probes/font_paint.py, which prints the report this page posts back. Opened
+straight from disk it prints the same report into the page, because
+broken.woff2 is missing under file:// as well.
+-->
+<style>
+  /* The deliberately broken webfont link. Relative, so it 404s over http and
+     misses on disk. */
+  @font-face { font-family: "ProbeBroken"; src: url("broken.woff2") format("woff2"); }
+
+  /* local() resolves against installed fonts, so a face that loads needs no
+     binary in the repository. Georgia and Courier New ship with macOS and with
+     Windows. On a host missing one, its rows read as a family that never
+     paints, and the report says which families resolved. */
+  @font-face { font-family: "ProbeLocalUsed"; src: local("Georgia"); }
+  @font-face { font-family: "ProbeLocalUnused"; src: local("Courier New"); }
+
+  body { font: 14px/1.5 system-ui, sans-serif; margin: 2rem; }
+  pre { font-size: 12px; overflow-x: auto; }
+  .broken { font-family: "ProbeBroken", monospace; }
+  .used { font-family: "ProbeLocalUsed", monospace; }
+</style>
+
+<p class="broken">ProbeBroken is on the page, so the browser attempts the fetch.</p>
+<p class="used">ProbeLocalUsed is on the page, so the browser resolves it.</p>
+<pre id="report">running</pre>
+
+<script>
+(async () => {
+  const FAMILIES = [
+    ["ProbeBroken", "declared, src 404s"],
+    ["ProbeLocalUsed", "declared local(Georgia), painted above"],
+    ["ProbeLocalUnused", "declared local(Courier New), no element uses it"],
+    ["Georgia", "installed, never declared"],
+    ["Nonexistent Face Qz", "nowhere"],
+  ];
+  const STRINGS = [
+    ["BESbswy", "BESbswy"],
+    ["mmmlli", "mmmmmmmmmmlli"],
+    ["pangram", "The quick brown fox jumps over the lazy dog"],
+  ];
+  const SIZES = [16, 48, 100];
+  const FALLBACKS = ["monospace", "serif", "sans-serif"];
+
+  const check = (family) => {
+    try {
+      return String(document.fonts.check('16px "' + family + '"'));
+    } catch (err) {
+      return "threw " + err.name;
+    }
+  };
+
+  // One span per measurement, off-screen, with everything that moves a width
+  // held still: no wrapping, no inherited letter-spacing, no kerning.
+  const width = (text, family, size) => {
+    const el = document.createElement("span");
+    el.style.cssText =
+      "position:absolute;left:-9999px;top:-9999px;white-space:pre;" +
+      "line-height:1;letter-spacing:normal;font-kerning:none;";
+    el.style.fontFamily = family;
+    el.style.fontSize = size + "px";
+    el.textContent = text;
+    document.body.appendChild(el);
+    const w = el.getBoundingClientRect().width;
+    el.remove();
+    return w;
+  };
+
+  const round = (n) => (Math.round(n * 100) / 100).toFixed(2);
+  const pad = (s, n) => String(s).padEnd(n);
+  const padStart = (s, n) => String(s).padStart(n);
+
+  // check() before anything, after the font set settles, and after the width
+  // probe has forced every family through layout. Three columns, because the
+  // answer moves.
+  const cold = {};
+  for (const [family] of FAMILIES) cold[family] = check(family);
+
+  await document.fonts.ready;
+  const settled = {};
+  for (const [family] of FAMILIES) settled[family] = check(family);
+
+  const rows = [];
+  for (const [label, text] of STRINGS) {
+    for (const size of SIZES) {
+      for (const [family] of FAMILIES) {
+        const deltas = FALLBACKS.map(
+          (fb) => width(text, '"' + family + '", ' + fb, size) - width(text, fb, size),
+        );
+        const magnitudes = deltas.map(Math.abs);
+        rows.push({
+          label,
+          size,
+          family,
+          deltas,
+          min: Math.min(...magnitudes),
+          max: Math.max(...magnitudes),
+        });
+      }
+    }
+  }
+
+  const warm = {};
+  for (const [family] of FAMILIES) warm[family] = check(family);
+
+  const out = [];
+  out.push("user agent: " + navigator.userAgent);
+  out.push("page: " + location.href);
+  out.push("");
+  out.push("document.fonts.check('16px \"Name\"'), at three moments");
+  out.push(
+    "  " + pad("family", 21) + pad("cold", 8) + pad("fonts.ready", 13) +
+    pad("after width probe", 19) + "what it is",
+  );
+  for (const [family, what] of FAMILIES) {
+    out.push(
+      "  " + pad(family, 21) + pad(cold[family], 8) + pad(settled[family], 13) +
+      pad(warm[family], 19) + what,
+    );
+  }
+
+  out.push("");
+  out.push("width probe: width(target + fallback) - width(fallback), in px");
+  out.push(
+    "  " + pad("string", 9) + padStart("size", 5) + "  " + pad("family", 21) +
+    FALLBACKS.map((fb) => padStart("d " + fb, 13)).join("") +
+    padStart("min", 10) + padStart("max", 10),
+  );
+  for (const row of rows) {
+    out.push(
+      "  " + pad(row.label, 9) + padStart(row.size, 5) + "  " + pad(row.family, 21) +
+      row.deltas.map((d) => padStart(round(d), 13)).join("") +
+      padStart(round(row.min), 10) + padStart(round(row.max), 10),
+    );
+  }
+
+  out.push("");
+  out.push("the width probe against itself: a target that IS the fallback");
+  for (const fb of FALLBACKS) {
+    const d = width("BESbswy", '"' + fb + '", ' + fb, 100) - width("BESbswy", fb, 100);
+    out.push("  " + pad(fb, 21) + padStart(round(d), 10));
+  }
+
+  const report = out.join("\n");
+  document.getElementById("report").textContent = report;
+  if (location.protocol.startsWith("http")) {
+    fetch("result", { method: "POST", body: report }).catch(() => {});
+  }
+})();
+</script>
