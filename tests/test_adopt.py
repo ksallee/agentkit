@@ -784,3 +784,112 @@ class TestWhatThePlanKnowsWithoutTheAnswers:
 
     def test_the_workflow_names_agree(self):
         assert set(adopt.WORKFLOW_FILES) == set(adopt.workflow_files(ANSWERS))
+
+
+class TestTheIgnoreFile:
+    """`.gitignore`, the one target where this template merges into a project's file.
+
+    Rule 0 calls `.agentkit/local.md` gitignored and nothing wrote a
+    `.gitignore`, so a seeded project was one `git add` from committing the
+    personal layer (#48).
+    """
+
+    def read(self, project):
+        return (project / ".gitignore").read_text()
+
+    def test_an_empty_project_gets_the_block(self, project):
+        assert adopt.seed_gitignore(project).status == adopt.SEEDED
+        body = self.read(project)
+        assert body.startswith(adopt.GITIGNORE_START)
+        assert body.rstrip("\n").endswith(adopt.GITIGNORE_END)
+        for line in adopt.GITIGNORE_LINES:
+            assert f"\n{line}\n" in body
+
+    def test_the_projects_own_lines_survive(self, project):
+        theirs = "node_modules/\n*.log\n"
+        (project / ".gitignore").write_text(theirs)
+        assert adopt.seed_gitignore(project).status == adopt.APPENDED
+        body = self.read(project)
+        assert body.startswith(theirs)
+        assert adopt.GITIGNORE_START in body
+
+    def test_a_file_with_no_trailing_newline_keeps_its_last_line(self, project):
+        (project / ".gitignore").write_text("node_modules/")
+        adopt.seed_gitignore(project)
+        assert "node_modules/\n" in self.read(project)
+
+    def test_a_rerun_carries_one_block_and_not_two(self, project):
+        (project / ".gitignore").write_text("node_modules/\n")
+        adopt.seed_gitignore(project)
+        assert adopt.seed_gitignore(project).status == adopt.UNCHANGED
+        body = self.read(project)
+        assert body.count(adopt.GITIGNORE_START) == 1
+        assert body.count(".agentkit/local.*") == 1
+        assert body.startswith("node_modules/\n")
+
+    def test_a_rerun_over_a_current_block_writes_no_file(self, project):
+        adopt.seed_gitignore(project)
+        before = (project / ".gitignore").stat().st_mtime_ns
+        assert adopt.seed_gitignore(project).status == adopt.UNCHANGED
+        assert (project / ".gitignore").stat().st_mtime_ns == before
+
+    def test_an_edit_inside_the_block_comes_back(self, project):
+        (project / ".gitignore").write_text(
+            f"*.log\n\n{adopt.GITIGNORE_START}\ntheirs/\n{adopt.GITIGNORE_END}\ndist/\n"
+        )
+        assert adopt.seed_gitignore(project).status == adopt.UPDATED
+        body = self.read(project)
+        assert "theirs/" not in body
+        assert ".agentkit/local.*" in body
+        assert body.startswith("*.log\n")
+        assert body.endswith("dist/\n")
+
+    def test_a_block_with_no_end_marker_is_left_exactly_as_it_was(self, project):
+        """The end marker is where a rewrite stops, so a missing one stops the write."""
+        theirs = f"*.log\n{adopt.GITIGNORE_START}\n.agentkit/local.*\n"
+        (project / ".gitignore").write_text(theirs)
+        assert adopt.seed_gitignore(project).status == adopt.KEPT
+        assert self.read(project) == theirs
+
+    def test_a_plan_writes_no_file(self, project):
+        assert adopt.plan_gitignore(project).status == adopt.SEEDED
+        assert not (project / ".gitignore").exists()
+
+    def test_a_plan_over_an_existing_file_changes_nothing(self, project):
+        (project / ".gitignore").write_text("node_modules/\n")
+        assert adopt.plan_gitignore(project).status == adopt.APPENDED
+        assert self.read(project) == "node_modules/\n"
+
+    def test_it_is_never_in_the_manifest(self, template, project):
+        adopt.write(template, project)
+        adopt.seed_gitignore(project)
+        assert ".gitignore" not in adopt.manifest(project)
+
+    def test_the_report_names_it(self, template, project, capsys):
+        adopt.main([str(project), "--write", "--pack", "none", "--template", str(template)])
+        out = capsys.readouterr().out
+        assert "ignore" in out
+        assert f"{adopt.SEEDED:<9} .gitignore" in out
+
+    def test_an_unclosed_block_gets_a_paragraph_of_its_own(self, template, project, capsys):
+        (project / ".gitignore").write_text(adopt.GITIGNORE_START + "\n")
+        adopt.main([str(project), "--write", "--pack", "none", "--template", str(template)])
+        assert "Put the marker back" in capsys.readouterr().out
+
+    def test_git_ignores_the_personal_layer(self, template, project):
+        """The check #48 asks for, put to git rather than to the file's text."""
+        import subprocess
+
+        adopt.main([str(project), "--write", "--pack", "none", "--template", str(template)])
+        env = {"PATH": "/usr/bin:/bin", "HOME": str(project)}
+        subprocess.run(["git", "-C", str(project), "init"], check=True, capture_output=True, env=env)
+        (project / ".agentkit" / "local.md").write_text("mine\n")
+        done = subprocess.run(
+            ["git", "-C", str(project), "check-ignore", "-v", ".agentkit/local.md", ".claude/worktrees/"],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+        assert done.returncode == 0
+        assert ".agentkit/local.*" in done.stdout
+        assert ".claude/worktrees/" in done.stdout
