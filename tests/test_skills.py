@@ -17,8 +17,10 @@ The `adopt` skill tables the outcomes `bin/adopt` prints, and #41 added
 `removed` and `orphaned` while the table stayed at four. That table enumerates
 on purpose, so its assertion is the strict one: every status the script
 declares has a row, and no row names one the script cannot report. The statuses
-are read off the imported module, because a parse of the file saw only the
-shapes its author had met and passed while `appended` was missing (#70).
+come off the imported module's `STATUSES` tuple: a parse of the file saw only
+the shapes its author had met and passed while `appended` was missing (#70),
+and enumerating by spelling held only while every status was spelled
+`APPENDED = "appended"` (#78).
 """
 
 from __future__ import annotations
@@ -114,24 +116,25 @@ def _adopt():
 
 
 def _reported_outcomes() -> set[str]:
-    """Every status `bin/adopt` declares, read off the imported module.
+    """Every status `bin/adopt` declares, read off its `STATUSES` tuple.
 
-    A status constant spells its own value, `APPENDED = "appended"`, and no
-    other module level string in that file holds its own name: the rest are
-    paths, markers and rendered bodies.
+    The tuple is the whole enumeration. Selecting the module level strings
+    whose name is their own value uppercased picks the same nine out of
+    `bin/adopt` today and holds only while every status is spelled
+    `APPENDED = "appended"`, so a status named for how it reads rather than for
+    what it prints drops out and nothing says so (#78). A tuple the test falls
+    back from would hide the same omission, so there is no fallback: an absent
+    `STATUSES` reads as no status at all and
+    `test_outcome_names_are_readable_from_both_sides` names it.
 
     Reading the module replaces a parse of it. A parser has to resolve the
     argument `Outcome` was built with, and a status reaches it as a local
     unpacked from `gitignore(...)` and as the subscript `gitignore(...)[1]`,
     so the two shapes nobody had thought of hid `appended` while the test
     passed (#70). What this costs is one direction of precision: a status
-    constant nothing ever passes to `Outcome` still needs its row.
+    declared and never passed to `Outcome` still needs its row.
     """
-    return {
-        value
-        for name, value in vars(_adopt()).items()
-        if isinstance(value, str) and name == value.upper()
-    }
+    return set(getattr(_adopt(), "STATUSES", ()))
 
 
 def _tabled_outcomes() -> set[str]:
@@ -161,7 +164,7 @@ TABLED = _tabled_outcomes()
 
 def test_outcome_names_are_readable_from_both_sides() -> None:
     """Two extractions that silently matched nothing would agree on nothing."""
-    assert REPORTED, f"no status read out of {ADOPT}; `Outcome` is built another way now"
+    assert REPORTED, f"no status read out of {ADOPT}; its `STATUSES` tuple is gone or renamed"
     assert TABLED, f"no outcome row read out of {ADOPT_SKILL}; the table shape changed"
 
 

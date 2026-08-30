@@ -86,13 +86,7 @@ IGNORED_SUFFIXES = (".pyc",)
 # part of any template on any machine, and this answers whether a file that is
 # belongs to the project. Keeping them apart is what lets a reader looking for
 # why a skill went missing find one list with the reason on it.
-#
-# The `_KEY` suffix is load-bearing. `tests/test_skills.py` reads every status
-# this module declares as the module level string whose name is its own value
-# uppercased, and asserts each one has a row in the outcome table the `adopt`
-# skill carries. A constant named `TEMPLATE_ONLY` would be read as a status
-# nothing can report.
-TEMPLATE_ONLY_KEY = "template_only"
+TEMPLATE_ONLY = "template_only"
 
 # What happened to one file. `unchanged` wrote nothing. `kept` is the only
 # status that leaves a second file behind.
@@ -109,6 +103,19 @@ UPDATED = "updated"
 KEPT = "kept"
 REMOVED = "removed"
 ORPHANED = "orphaned"
+
+# The six a `files` row can carry, in the order `report()` counts them, and
+# every status this module can print.
+#
+# `tests/test_skills.py` reads `STATUSES` and asserts each one has a row in the
+# outcome table the `adopt` skill carries. It reads this tuple and nothing
+# else, so a status added here and left out of it is an omission a reader of
+# this file can see. Enumerating the statuses by spelling instead, as the
+# module level strings whose name is their own value uppercased, holds only
+# while every status happens to be spelled that way and drops the first one
+# that is not (#78).
+FILE_STATUSES = (WRITTEN, UNCHANGED, UPDATED, KEPT, REMOVED, ORPHANED)
+STATUSES = (SEEDED, PRESENT, APPENDED, *FILE_STATUSES)
 
 # The gate lists, one per language, as (name, command, cwd). `adopt` refuses to
 # guess this: a gate list that names a command the project does not run makes
@@ -183,7 +190,7 @@ def seeds(template: Path) -> list[tuple[str, Path]]:
     `seeds.json`.
     """
     declared = json.loads((template / SEEDS).read_text())
-    withheld = [_named(template, entry) for entry in declared.get(TEMPLATE_ONLY_KEY, [])]
+    withheld = [_named(template, entry) for entry in declared.get(TEMPLATE_ONLY, [])]
     found: list[tuple[str, Path]] = []
     for entry in declared["tracked"]:
         source = _named(template, entry)
@@ -1124,8 +1131,7 @@ def report(
             "written to, and the run continued."
         )
 
-    statuses = (WRITTEN, UNCHANGED, UPDATED, KEPT, REMOVED, ORPHANED)
-    counts = {status: sum(1 for r in files if r.status == status) for status in statuses}
+    counts = {status: sum(1 for r in files if r.status == status) for status in FILE_STATUSES}
     print("\n" + "  ".join(f"{n} {status}" for status, n in counts.items()))
     if counts[REMOVED]:
         print(
