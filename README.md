@@ -34,9 +34,14 @@ in `.agentkit/manifest.json`, and seeds `.agentkit/gates.toml`, `team.md` and
 a file you have edited is replaced and yours is kept beside it as `.local`, with
 both names on the line.
 
-The `adopt` skill asks the five answers the team layer needs. The pack is the
-one it refuses to guess, because a gate list naming a command you do not run
-makes rule 17 disagree with CI.
+A write also renders your `CLAUDE.md` from the answers you gave: the layers, the
+role guides, the rules that travel, and your own 1 to 8 held open. A project
+that already has a router keeps it untouched, and the `adopt` skill asks how you
+want the two reconciled.
+
+The `adopt` skill asks the six answers the team layer and the router need. The
+pack is the one it refuses to guess, because a gate list naming a command you do
+not run makes rule 17 disagree with CI.
 
 ## What it is not
 

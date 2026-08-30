@@ -11,6 +11,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import re
 import sys
 import tomllib
 from importlib.machinery import SourceFileLoader
@@ -30,6 +31,17 @@ adopt = importlib.util.module_from_spec(_spec)
 # `sys.modules[cls.__module__]` and a module absent from there raises.
 sys.modules["adopt"] = adopt
 _loader.exec_module(adopt)
+
+# The six answers, as `main` assembles them. One constant, because the router
+# and the team layer are rendered from the same dict.
+ANSWERS = {
+    "pack": "python",
+    "name": "demo",
+    "summary": "A project.",
+    "phase": "building",
+    "merge": "Both of us review.",
+    "references": "curated",
+}
 
 SKILL = ".claude/skills/demo/SKILL.md"
 STYLE = "docs/development/STYLE.md"
@@ -218,13 +230,7 @@ class TestAPlanChangesNothing:
 class TestTheTeamLayer:
     @pytest.fixture
     def answers(self):
-        return {
-            "pack": "python",
-            "name": "demo",
-            "summary": "A project.",
-            "phase": "building",
-            "merge": "Both of us review.",
-        }
+        return ANSWERS
 
     def test_all_three_files_are_seeded(self, project, answers):
         rows = adopt.seed_team(project, answers)
@@ -334,3 +340,162 @@ class TestThePhaseDefault:
                      "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"},
             )
         assert adopt.default_phase(project) == "building"
+
+
+class TestTheDesignSettings:
+    """`## Design` in `team.md`, which `bin/adopt` and this repository both write.
+
+    #26: this repository's `.agentkit/team.md` was written by hand to match
+    `team_files()`, and nothing checked the two agree.
+    """
+
+    def test_the_references_answer_reaches_the_team_file(self, project):
+        adopt.seed_team(project, {**ANSWERS, "references": "refero"})
+        body = (project / ".agentkit" / "team.md").read_text()
+        assert "| references | curated, refero |" in body
+        assert "`references` is `refero`" in body
+
+    def test_surface_is_seeded_unanswered(self, project):
+        adopt.seed_team(project, ANSWERS)
+        body = (project / ".agentkit" / "team.md").read_text()
+        assert "| surface | canvas, file, none |" in body
+        assert "`surface` waits until somebody picks one." in body
+
+    def test_the_command_defaults_references_to_curated(self, template, project):
+        adopt.main([str(project), "--write", "--pack", "none", "--template", str(template)])
+        assert "`references` is `curated`" in (project / ".agentkit" / "team.md").read_text()
+
+    def test_every_heading_this_repository_uses_is_one_adopt_writes(self, project):
+        """One direction of #26, and it is the direction that broke.
+
+        `.agentkit/team.md` here is hand-written and `team_files()` renders the
+        seeded copy, so a section added to this repository's file and not to the
+        renderer gives every adopted project a team layer missing it. The other
+        direction stays open while the design section lands on two branches.
+        """
+        ours = re.findall(r"^## (.+)$", (ROOT / ".agentkit" / "team.md").read_text(), re.M)
+        seeded = re.findall(r"^## (.+)$", adopt.team_files(ANSWERS)["team.md"], re.M)
+        assert set(ours) - set(seeded) == set()
+
+
+def rule_numbers(body: str) -> set[int]:
+    """Every rule this router states, from its `## N.` and `## N to M` headings."""
+    found: set[int] = set()
+    for one, last in re.findall(r"^## (\d+)(?:\.|\s+to\s+(\d+))", body, re.M):
+        found |= set(range(int(one), int(last) + 1)) if last else {int(one)}
+    return found
+
+
+class TestTheRouter:
+    def test_it_lands_in_an_empty_project(self, template, project):
+        row = adopt.seed_router(template, project, ANSWERS)
+        assert row.status == adopt.SEEDED
+        assert (project / "CLAUDE.md").is_file()
+
+    def test_the_answers_reach_it(self, template, project):
+        adopt.seed_router(template, project, ANSWERS)
+        body = (project / "CLAUDE.md").read_text()
+        assert body.startswith("# demo\n")
+        assert "A project." in body
+
+    def test_no_placeholder_survives(self, template, project):
+        """The reason the router is rendered rather than copied from a template file.
+
+        A skipped question raises `KeyError` in `str.format`, so no `{name}`
+        reaches a project's tree. A missing key would fail this test at the
+        render, before the assertion.
+        """
+        adopt.seed_router(template, project, ANSWERS)
+        body = (project / "CLAUDE.md").read_text()
+        assert "{" not in body and "}" not in body
+
+    def test_an_existing_router_is_left_exactly_as_it_was(self, template, project):
+        theirs = "# their own project\n\nRules nobody here wrote.\n"
+        (project / "CLAUDE.md").write_text(theirs)
+        row = adopt.seed_router(template, project, ANSWERS)
+        assert row.status == adopt.PRESENT
+        assert (project / "CLAUDE.md").read_text() == theirs
+        assert not (project / "CLAUDE.md.local").exists()
+
+    def test_a_plan_writes_no_router(self, project):
+        assert adopt.plan_router(project).status == adopt.SEEDED
+        assert not (project / "CLAUDE.md").exists()
+
+    def test_it_is_never_in_the_manifest(self, template, project):
+        adopt.write(template, project)
+        adopt.seed_router(template, project, ANSWERS)
+        assert "CLAUDE.md" not in adopt.manifest(project)
+
+    def test_a_rerun_leaves_the_projects_own_rules_alone(self, template, project):
+        adopt.main([str(project), "--write", "--pack", "none", "--template", str(template)])
+        mine = (project / "CLAUDE.md").read_text() + "\n## 1. Everything is a file.\n"
+        (project / "CLAUDE.md").write_text(mine)
+        adopt.main([str(project), "--write", "--pack", "none", "--template", str(template)])
+        assert (project / "CLAUDE.md").read_text() == mine
+
+    def test_the_rules_it_states_are_the_ones_this_repository_states(self, template):
+        """The agreement test STYLE.md asks for when a fact lives in two files.
+
+        A project gets rules 0, 9, 20 and 24 from the generated router and
+        nowhere else, so the text is a second copy of the set in this
+        repository's `CLAUDE.md`. Coupling this one test to the real tree is
+        what makes a rule added there without being added here fail.
+        """
+        seeded = rule_numbers(adopt.router(template, ANSWERS))
+        shipped = rule_numbers((ROOT / "CLAUDE.md").read_text())
+        assert seeded == shipped
+        assert {0, 1, 8, 9, 20, 24} <= seeded
+
+    def test_rules_1_to_8_carry_no_constraint_and_nothing_to_fill_in(self, template):
+        """An empty heading invites a guess and a question list invites an answer."""
+        section = adopt.router(template, ANSWERS).split("## 1 to 8")[1].split("\n## ")[0]
+        assert "?" not in section
+        assert "- " not in section
+        assert "TODO" not in section
+
+
+class TestTheRoleTable:
+    def test_every_seeded_guide_gets_a_row(self):
+        table = adopt.role_table(ROOT)
+        for name in ("ENGINEER.md", "DESIGNER.md", "OPERATOR.md"):
+            assert f"docs/roles/{name}" in table
+
+    def test_every_guide_this_repository_ships_has_a_description(self):
+        """A row reading `unstated` means somebody added a guide and no summary."""
+        assert "unstated" not in adopt.role_table(ROOT)
+
+    def test_a_template_with_no_guides_says_so_instead_of_printing_an_empty_table(self, template):
+        assert "seeds no role guides" in adopt.role_table(template)
+
+    def test_the_router_names_the_guides_a_project_actually_gets(self):
+        body = adopt.router(ROOT, ANSWERS)
+        for path in sorted((ROOT / "docs" / "roles").glob("*.md")):
+            assert path.name in body
+
+    def test_the_guides_are_seeded(self):
+        """A guide the router names and `seeds.json` skips is a broken link."""
+        seeded = {rel for rel, _ in adopt.seeds(ROOT)}
+        for path in sorted((ROOT / "docs" / "roles").glob("*.md")):
+            assert f"docs/roles/{path.name}" in seeded
+
+
+class TestTheCommandOnAnExistingRouter:
+    def test_the_report_names_the_router_either_way(self, template, project, capsys):
+        adopt.main([str(project), "--template", str(template)])
+        out = capsys.readouterr().out
+        assert "router" in out
+        assert f"{adopt.SEEDED:<9} CLAUDE.md" in out
+
+    def test_a_present_router_gets_a_paragraph_of_its_own(self, template, project, capsys):
+        (project / "CLAUDE.md").write_text("# theirs\n")
+        adopt.main([str(project), "--template", str(template)])
+        out = capsys.readouterr().out
+        assert "Nothing was written, nothing was moved" in out
+        assert "the `adopt` skill asks" in out
+
+    def test_a_write_against_an_existing_router_still_seeds_the_rest(self, template, project):
+        (project / "CLAUDE.md").write_text("# theirs\n")
+        adopt.main([str(project), "--write", "--pack", "none", "--template", str(template)])
+        assert (project / "CLAUDE.md").read_text() == "# theirs\n"
+        assert (project / ".agentkit" / "team.md").is_file()
+        assert (project / STYLE).is_file()

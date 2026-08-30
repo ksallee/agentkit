@@ -8,10 +8,17 @@ Standard library only, so this runs on a machine that has installed nothing
 and on any CI runner.
 
 The plan is the default and `--write` is opt-in, because the target is
-somebody's repository rather than a directory this tool owns. The first run
-against a project that already carries these files replaces every one of them
-and moves the project's copy aside, which is a change worth reading before it
-happens.
+somebody's repository and not a directory this tool owns. The first run against
+a project that already carries these files replaces every one of them and moves
+the project's copy aside, which is a change worth reading before it happens.
+
+Three kinds of file, and only the first is ever replaced:
+
+- `seeds.json` names what the template owns. Byte copies, hashed into
+  `.agentkit/manifest.json`, replaced on every rerun.
+- `.agentkit/gates.toml`, `team.md` and `phase.json` are the team layer,
+  rendered from the answers and seeded once.
+- `CLAUDE.md` is the router, rendered from the answers and seeded once.
 """
 
 from __future__ import annotations
@@ -40,6 +47,17 @@ MANIFEST_REL = ".agentkit/manifest.json"
 MANIFEST_VERSION = 1
 
 TEAM_DIR = ".agentkit"
+
+# The project's router, at the root because an agent loads it from there.
+# Rendered from the answers and absent from `seeds.json`, for two
+# reasons. This repository's own copy describes agentkit rather than the
+# project. And a router carrying a project's rules 1 to 8 is a file the project
+# owns, so the manifest never claims its bytes and no rerun replaces them.
+ROUTER_REL = "CLAUDE.md"
+
+# What happened to a generated file. Neither one ever overwrites.
+SEEDED = "seeded"
+PRESENT = "present"
 
 # Appended to a target whose bytes nobody here wrote. Measured 2026-08-29 in
 # `mac-hours/probes/claude_plugin.py`: a `SKILL.md.local` beside a real
@@ -257,6 +275,23 @@ def _commit(root: Path) -> str:
 # The team layer, which the project owns
 
 
+# The two settings the design pipeline reads out of the team layer. This
+# repository's own `.agentkit/team.md` carries the same table, and #26 is the
+# defect that a hand-written file and this renderer both claim one format with
+# nothing checking they agree. `tests/test_adopt.py` checks the headings.
+#
+# `references` is opt in: `curated` keeps the pipeline on a list this project
+# maintains, and the design skills work with no third-party service.
+DESIGN_TABLE = (
+    "| Setting | Values | Meaning |\n"
+    "|---|---|---|\n"
+    "| surface | canvas, file, none | where a finished design lands |\n"
+    "| references | curated, refero | where `design-references` gets its list |\n"
+)
+
+REFERENCES = ("curated", "refero")
+
+
 def team_files(answers: dict[str, str]) -> dict[str, str]:
     """The three team-layer files, rendered from the answers.
 
@@ -286,9 +321,9 @@ def team_files(answers: dict[str, str]) -> dict[str, str]:
             f"# {answers['name']}\n\n"
             f"{answers['summary']}\n\n"
             "## The layer this file is\n\n"
-            "Committed, and it wins over anybody's `context.md` on anything two\n"
-            "people have to agree on. One person opting out of the gate list is\n"
-            "a decision rather than a preference.\n\n"
+            "Committed, and it wins over anybody's `.agentkit/local.md` on\n"
+            "anything two people have to agree on. One person opting out of the\n"
+            "gate list is a decision two people make.\n\n"
             "## Who reviews and who merges\n\n"
             f"{answers['merge']}\n\n"
             "## Who owns what\n\n"
@@ -297,7 +332,10 @@ def team_files(answers: dict[str, str]) -> dict[str, str]:
             "| Area | Owner |\n|---|---|\n|  |  |\n\n"
             "## Conventions this project settled\n\n"
             "What a reader would get wrong without being told. Empty is honest\n"
-            "until something has actually been settled.\n"
+            "until something has actually been settled.\n\n"
+            "## Design\n\n" + DESIGN_TABLE + "\n"
+            f"`references` is `{answers['references']}`, answered at adoption.\n"
+            "`surface` waits until somebody picks one.\n"
         ),
     }
 
@@ -309,20 +347,215 @@ def seed_team(project: Path, answers: dict[str, str]) -> list[Outcome]:
         target = project / TEAM_DIR / name
         rel = f"{TEAM_DIR}/{name}"
         if target.is_file():
-            out.append(Outcome(rel, "present"))
+            out.append(Outcome(rel, PRESENT))
             continue
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(body)
-        out.append(Outcome(rel, "seeded"))
+        out.append(Outcome(rel, SEEDED))
     return out
 
 
 def plan_team(project: Path) -> list[Outcome]:
     """Which team-layer files a write would seed, writing none."""
     return [
-        Outcome(f"{TEAM_DIR}/{name}", "present" if (project / TEAM_DIR / name).is_file() else "seeded")
+        Outcome(f"{TEAM_DIR}/{name}", PRESENT if (project / TEAM_DIR / name).is_file() else SEEDED)
         for name in sorted(("gates.toml", "phase.json", "team.md"))
     ]
+
+
+# ---------------------------------------------------------------------------
+# The router, the first file an agent loads in the project
+
+
+# Rendered with `str.format`, so a missing answer raises `KeyError` here rather
+# than landing in somebody's tree as a literal `{name}`. Every brace in the
+# body below is a substitution; markdown tables carry none.
+#
+# Rules 0, 9, 20 and 24 are stated in full because a project gets them nowhere
+# else: `seeds.json` carries `WORKFLOW.md`, which holds 10 to 19 and 21 to 23
+# and says so. That makes this text a second copy of the rule set in this
+# repository's own `CLAUDE.md`, and `tests/test_adopt.py` asserts the two
+# declare the same rule numbers, so a rule added here without being added there
+# fails the suite.
+#
+# Rules 1 to 8 get a short note and nothing to fill in. The numbers have to
+# stay visible, because a router jumping from 0 to 9 reads as a set somebody
+# deleted from. Anything more invites an answer: an empty heading invites a
+# guess, and a list of the questions invites an agent to answer them on day
+# one. `shape` (#23) asks, and it rewrites this section.
+ROUTER = """# {name}
+
+{summary}
+
+---
+
+# Rules: these are not optional
+
+Every task, every session, human or AI. The reasoning behind each is in
+[`docs/development/WORKFLOW.md`](docs/development/WORKFLOW.md).
+
+## 0. Read the layers, in order, and let the right one win
+
+Three layers. Precedence is per field.
+
+| Layer | Where | Wins on |
+|---|---|---|
+| Shipped | `docs/`, `bin/` and `.claude/`, seeded by `adopt` | nothing; it is the default |
+| Team | `.agentkit/`, committed | anything two people must agree on |
+| Personal | `.agentkit/local.md`, gitignored | taste |
+
+**Team wins on the gate list and the phase.** One person opting out of the test
+suite is a decision two people make. **Personal wins on taste**: how work is
+delivered, which role guide is read, how large a pull request should be.
+
+`.agentkit/team.md` holds conventions and who owns what. `.agentkit/gates.toml`
+declares the gates; `bin/verify` runs them. `.agentkit/phase.json` says
+`shaping` or `building`. `.agentkit/local.md` is one person's file, and its
+absence means nobody has been asked yet.
+
+## 1 to 8 are yours
+
+Your storage model, your precedence, what this project refuses to build.
+Nothing is settled yet, so nothing is written here. The numbers stay open so
+your rules and the ones below never collide in a citation.
+
+## 9. Probe an external interface, never assume it
+
+Before writing code against a third party library, API or tool, put a small
+script in `probes/` that calls the real thing and prints what came back. Commit
+it. Payload shapes and field names vary by version, and an assumption baked
+into a parser fails quietly on the one machine that matters. A reader reruns a
+probe instead of trusting a docstring.
+
+Probes print. They never write to a database. Standard library only, so a probe
+runs before the project installs.
+
+This rule applies where the project touches something it does not control. With
+no external interface, drop it. A dead rule teaches that rules are decorative.
+
+## 20. Do not widen scope silently
+
+Fold in a bug you hit while working: file it, close it in the same pull
+request, say so in the body. The thing to avoid is an unrelated change nobody
+can find later. The test: would a reader of the pull request expect it?
+
+## 24. Follow STYLE.md in everything you write
+
+[`docs/development/STYLE.md`](docs/development/STYLE.md) governs markdown,
+comments, docstrings, commit messages, issue and pull request bodies. No em
+dashes, no "not X, Y", no hedging preambles, no marketing vocabulary.
+`bin/check-style .` gates the mechanical half. Voice, restatement and padding
+are a reading, and `wrap-up` does it.
+
+## The rest load when they apply
+
+Rules 10 to 19 and 21 to 23 are in
+[`docs/development/WORKFLOW.md`](docs/development/WORKFLOW.md): how work is
+filed, branched, committed, reviewed and merged. They apply when somebody opens
+or files work.
+
+A rule keeps its number wherever it lives, so a citation survives a move.
+
+---
+
+## Read the guide for your role, and skip the other two
+
+{roles}
+
+A guide costs tokens every turn, and two of the three are written for somebody
+else. Where two roles disagree, `.agentkit/team.md` says who wins.
+
+Seeding a guide claims no role. The role exists when somebody names it in their
+own `.agentkit/local.md`. With no such line, nobody has been asked yet. Ask.
+
+**A role never gates a command.** Every skill is available to everybody, and a
+command checks the preconditions it needs and prints the fix when one is
+missing. Somebody who came for the schema and now wants a different colour is
+doing design for twenty minutes, and a role gate puts a wall exactly there.
+
+## Task knowledge lives in skills
+
+Loaded on demand from `.claude/skills/`, committed, available the moment
+somebody clones. No plugin, no install step.
+
+`pick-work`, as `/work`, says what to do next. `wrap-up`, as `/done`, ends a
+session: the tree is left clean, the prose gets read against STYLE.md, and
+every preference the session stated is written into the file that reads it
+next. `adopt` updates this scaffolding from the template it came from.
+
+The team layer is data that skills read. Skill precedence doesn't exist: two
+skills of one name both load.
+"""
+
+# One row per seeded guide, so the router names the files a project actually
+# got. `docs/roles/` is a `seeds.json` entry, and a guide added there joins this
+# table without an edit here.
+ROLES_DIR = "docs/roles"
+ROLES_HEADER = "| Role | Guide | Owns |\n|---|---|---|\n"
+
+# What each guide opens by claiming, kept to the phrase the guide itself uses.
+# A longer description here would be the copy that drifts.
+ROLE_OWNS = {
+    "ENGINEER": "the data model, the pipeline, and every number a screen shows",
+    "DESIGNER": "the look, the reading order, and the words on screen",
+    "OPERATOR": "what the project is for, and the calls only they can make",
+}
+
+
+def role_table(template: Path) -> str:
+    """The role table, one row per guide the template seeds.
+
+    A guide with no `ROLE_OWNS` row still gets a row, because a project naming
+    the file and describing it as unknown beats a project whose router omits a
+    guide sitting in its tree.
+    """
+    found = sorted((template / ROLES_DIR).glob("*.md")) if (template / ROLES_DIR).is_dir() else []
+    if not found:
+        return "This project seeds no role guides, so no line selects one."
+    rows = "".join(
+        f"| {path.stem.capitalize()} | [`{ROLES_DIR}/{path.name}`]({ROLES_DIR}/{path.name}) | "
+        f"{ROLE_OWNS.get(path.stem.upper(), 'unstated; read the guide')} |\n"
+        for path in found
+    )
+    return (
+        "`.agentkit/local.md` names the role you are working in. Read that guide "
+        "and\nskip the others.\n\n" + ROLES_HEADER + rows
+    ).rstrip("\n")
+
+
+def router(template: Path, answers: dict[str, str]) -> str:
+    """The project's `CLAUDE.md`, rendered from the answers `adopt` asked for."""
+    return ROUTER.format(
+        name=answers["name"],
+        summary=answers["summary"],
+        roles=role_table(template),
+    )
+
+
+def seed_router(template: Path, project: Path, answers: dict[str, str]) -> Outcome:
+    """Write the router when the project has none, and touch an existing one never.
+
+    A router is the file a project is most likely to have written itself, and
+    the `kept` path would move theirs to `CLAUDE.md.local`, which no agent
+    loads. That trades the project's own instructions for this template's on a
+    run somebody asked to seed files.
+
+    No policy is picked here on purpose. A delimited block appended to their
+    file, a sidecar theirs points at, a merge by hand and moving theirs aside
+    are all right for some project, and the answer depends on what their router
+    already says. `.claude/skills/adopt/SKILL.md` asks the question and the
+    operator answers it. This function reports what it found.
+    """
+    target = project / ROUTER_REL
+    if target.is_file():
+        return Outcome(ROUTER_REL, PRESENT)
+    target.write_text(router(template, answers))
+    return Outcome(ROUTER_REL, SEEDED)
+
+
+def plan_router(project: Path) -> Outcome:
+    """Whether a write would seed the router, writing nothing."""
+    return Outcome(ROUTER_REL, PRESENT if (project / ROUTER_REL).is_file() else SEEDED)
 
 
 # ---------------------------------------------------------------------------
@@ -348,7 +581,7 @@ def default_phase(project: Path) -> str:
     return "building" if done.returncode == 0 else "shaping"
 
 
-def report(project: Path, files: list[Outcome], team: list[Outcome], dry: bool) -> None:
+def report(project: Path, files: list[Outcome], team: list[Outcome], route: Outcome, dry: bool) -> None:
     """Name every file and both sides of every kept edit.
 
     A second file nobody was told about is a file nobody finds, so a kept line
@@ -364,6 +597,18 @@ def report(project: Path, files: list[Outcome], team: list[Outcome], dry: bool) 
     print(f"\nteam     {project / TEAM_DIR}")
     for row in team:
         print(f"  {row.status:<9} {row.rel}")
+    print(f"\nrouter   {project / ROUTER_REL}")
+    print(f"  {route.status:<9} {route.rel}")
+    if route.status == PRESENT:
+        print(
+            f"\n{ROUTER_REL} is already here. Nothing was written, nothing was moved,\n"
+            "and no sidecar was made. What a seeded router would have carried:\n"
+            "rule 0's three layers, 1 to 8 held open for this project's own\n"
+            "constraints, rules 9, 20 and 24 in full, a table naming the role\n"
+            "guides, and a pointer to docs/development/WORKFLOW.md for 10 to 23.\n"
+            "How the two files end up as one is a question the `adopt` skill asks\n"
+            "and the operator answers, per project."
+        )
 
     counts = {status: sum(1 for r in files if r.status == status) for status in (WRITTEN, UNCHANGED, UPDATED, KEPT)}
     print("\n" + "  ".join(f"{n} {status}" for status, n in counts.items()))
@@ -388,6 +633,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--summary", default="", help="One line saying what the project is.")
     ap.add_argument("--phase", choices=("shaping", "building"), help="Defaults by whether the target has a commit.")
     ap.add_argument("--merge", default="", help="Who reviews and who merges.")
+    ap.add_argument(
+        "--references",
+        choices=REFERENCES,
+        help="Where the design pipeline gets its reference list. Default: curated.",
+    )
     args = ap.parse_args(argv)
 
     project = args.project.resolve()
@@ -410,15 +660,20 @@ def main(argv: list[str] | None = None) -> int:
         "summary": args.summary or "Unanswered. One line saying what this project is.",
         "phase": args.phase or default_phase(project),
         "merge": args.merge or "The author does not merge their own pull request.",
+        # Opt in, so a project that never answers keeps the design pipeline off
+        # any third-party service.
+        "references": args.references or REFERENCES[0],
     }
 
     if args.write:
         files = write(args.template, project)
         team = seed_team(project, answers)
+        route = seed_router(args.template, project, answers)
     else:
         files = plan(args.template, project)
         team = plan_team(project)
-    report(project, files, team, dry=not args.write)
+        route = plan_router(project)
+    report(project, files, team, route, dry=not args.write)
     return 0
 
 
