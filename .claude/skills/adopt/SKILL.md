@@ -39,10 +39,17 @@ Check these and print the fix. Don't work around them.
 |---|---|---|
 | An agentkit checkout | `ls $AGENTKIT/bin/adopt` | `git clone git@github.com:ksallee/agentkit.git` |
 | python3 | `python3 --version` | Ships with macOS. |
-| The target is a git repository | `git -C <project> rev-parse --git-dir` | `git init`, so a bad adoption is one `git checkout` away. |
+| The target is a git repository | `git -C <project> rev-parse --git-dir` | `git init` |
+| It has a commit, or the operator knows what a write costs without one | `git -C <project> rev-parse HEAD` | Say which of the two states the target is in before writing |
 
-The last one is a precondition. Adoption replaces files, and a project with no
-history has no way back.
+Those two rows are one precondition read twice, and the second carries the
+reason. Adoption replaces files and `git checkout` is the way back, so a
+repository with a commit has a recovery. A repository with none passes
+`rev-parse --git-dir` and has nothing to check out: undoing a write there means
+deleting the paths `adopt` printed, which is whole only while the directory was
+empty. Say which state the target is in, and where it has files and no commits,
+say what is in the tree before writing over it. `--phase` reads the same fact
+and defaults to `shaping` when there is no commit.
 
 ## The six answers
 
@@ -50,7 +57,7 @@ Ask all six in one pass. Five carry a default worth accepting.
 
 | Answer | Flag | Default |
 |---|---|---|
-| Which gates the project runs, and what CI installs | `--pack python\|typescript\|python+typescript\|none` | **None. This is the one it will not guess.** |
+| Which gates the project runs, what CI installs, and which design driver arrives | `--pack python\|typescript\|python+typescript\|none` | **None. This is the one it will not guess.** |
 | The project's name | `--name` | The directory name. |
 | One line saying what it is | `--summary` | Left unanswered in `team.md` and in `CLAUDE.md`, marked as such. |
 | Who reviews and who merges | `--merge` | The author does not merge their own pull request. |
@@ -62,6 +69,15 @@ it.** A gate list naming a command the project does not run makes rule 17
 disagree with CI, and a rule CI contradicts is worse than an absent one.
 Guessing `python` from a `pyproject.toml` gets every project with a `web/` half
 wrong. Ask.
+
+**The pack also selects the design pipeline's browser driver.** The python
+packs receive `design/capture.py` and `design/build.py`, `typescript` receives
+`design/capture.mjs` and `design/build.mjs`, and `none` receives neither. Every
+pack receives `design/capture.js`, the contract those two share, which runs
+nothing on its own. So `none` seeds the design skills, `design/screens.json`
+and that contract, and nothing that executes `design-process` step 6. A project
+answering `none` because it runs no gates gets a design pipeline it cannot run
+and finds out at its first capture. Say that whenever `none` is on the table.
 
 **A first write ends by running the gate list it seeded.** `bin/adopt` invokes
 the project's own `bin/verify` and prints its table, so the operator learns on
@@ -92,6 +108,13 @@ The pack also picks what CI installs: uv for every pack, plus node, pnpm and an
 install step for a pack with pnpm gates. A gate added later that needs another
 tool needs a step in `.github/workflows/gates.yml`.
 
+**`--merge` has a range, and the default is one of three.** Rule 18 lists them:
+everything waits for a review, an agent may merge on green, or some class of
+change may. Whatever the operator answers goes into `team.md` in their own
+words, and no check reads it, because `bin/check-process` cannot tell an
+approved merge from an impatient one. An answer other than the default is a
+setting the rules offer rather than an exception to them.
+
 The name and the summary reach two files: `.agentkit/team.md` and the project's
 `CLAUDE.md`, which an agent loads every turn. A summary nobody gave leaves both
 saying so.
@@ -107,7 +130,10 @@ to an outside service by default.
 
 The other row in that table, `surface`, says where a finished design lands
 (`canvas`, `file` or `none`). `adopt` seeds it unanswered, so somebody picks
-one before the design skills run.
+one before the design skills run. Report it with its three values every time it
+comes up. A setting named as unanswered without its options tells the reader to
+go and find them in `design-process` step 8, and it was reported that way four
+times in one adoption before anybody said what they were.
 
 ## Run the plan first, always
 
@@ -259,8 +285,8 @@ Then, in the project:
 
 ```sh
 git status --short
-git add CLAUDE.md .agentkit .claude .github bin design docs
-git add ruff.toml probes tests/test_scaffolding.py          # a python pack
+git add CLAUDE.md .gitignore .agentkit .claude .github bin design docs probes
+git add ruff.toml tests/test_scaffolding.py                 # a python pack
 git add package.json tsconfig.json pnpm-lock.yaml tests/scaffolding.test.mjs
 git commit
 ```
@@ -271,7 +297,40 @@ cache: in a python project `__pycache__/`, `.pytest_cache/` and `.ruff_cache/`,
 and the ignores for those three are the project's own to write. The third line
 is the `typescript` pack's, and `python+typescript` takes the same four under
 `web/`, where its pnpm gates run. `pnpm-lock.yaml` is committed because CI
-installs from it; `node_modules/` is in the ignore block.
+installs from it; `node_modules/` is in the ignore block. `probes` is on the
+first line because `seeds.json` lists `probes/skill_sources.py` under `tracked`
+and every pack receives it. On the python line it goes untracked under
+`typescript`, and the manifest records it as written either way, so the next
+run reports it `unchanged` and never notices it is missing from git.
+`.gitignore` is on the same line for the same reason: `adopt` writes the block
+on every run, it carries `.agentkit/local.*`, and rule 19's forbidden list
+names that path because an ignore is a default somebody overrides.
+
+**The first commit cannot follow rules 10 to 13, and that is expected.** Rule
+11 branches off `origin/main`, which does not exist when this is the
+repository's first commit, and rule 10 wants an issue on a board the adoption
+is what makes usable. Commit straight to `main`. Rules 11, 13 and 16 are
+asserted by `bin/check-process` over a pull request, and a bootstrap commit has
+none. Where the project already has history the adoption is ordinary work, and
+it takes an issue and a branch like anything else.
+
+## Reporting the run back
+
+Three things a report gets wrong by default. All three were paid for in #109's
+phase A, where the operator had to ask four times for something the report
+should have carried.
+
+**Name a setting's values whenever the setting is named.** `surface` above is
+the standing case, and `references` and the pack are the same shape.
+
+**Name the directory every next step runs in.** `shape` runs in the project.
+Run it from the agentkit checkout and it files the project's constraint
+questions against `ksallee/agentkit`, because `gh` reads the working directory's
+remote.
+
+**A finding carries a recommendation, or says why it has none.** A list of gaps
+with no proposal against each one moves the deciding back onto whoever asked
+for the setup, at the moment they have least context on it.
 
 ## Updating later
 

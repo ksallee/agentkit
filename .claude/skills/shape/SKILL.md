@@ -26,6 +26,7 @@ Check these and print the fix. Don't work around them.
 | Somebody in the session who can answer | ask | Stop. Nothing here is answerable from the tree |
 | A router with the numbers held open | `grep -n "^## 1 to 8" CLAUDE.md` | `adopt` seeds it. On a router the project wrote, ask where its constraints already live |
 | Somewhere to file the questions | `gh issue list` | Without a tracker the answers still reach the router. Say that the reasoning has nowhere durable to go, and offer a file under `docs/` |
+| The session is in the project, not in the agentkit checkout | `git remote -v` | `cd` there first. `gh` reads the working directory's remote, so a run from the wrong one files the project's constraints against the template |
 
 ## Read the project before asking it anything
 
