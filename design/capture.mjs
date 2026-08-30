@@ -97,7 +97,14 @@ const frame = (screen) => [
 // Changes under the output directory are excluded: a capture writes there, so a
 // second run in one session would otherwise report every screen dirty.
 function stampCommit() {
-	const git = (...a) => execFileSync('git', a, { cwd: process.cwd(), encoding: 'utf8' }).trim();
+	// `stderr: 'pipe'` because the catch below already treats a failure as "no
+	// commit", and the default inherits: a capture run outside a checkout wrote
+	// `fatal: not a git repository` to the terminal and then carried on. The
+	// python driver passes `capture_output=True` for the same reason, and the
+	// two drivers agreeing on what they print is as much the contract as the
+	// bytes they write.
+	const git = (...a) =>
+		execFileSync('git', a, { cwd: process.cwd(), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
 	try {
 		const head = git('rev-parse', '--short', 'HEAD');
 		const rel = relative(process.cwd(), out).split('\\').join('/');
