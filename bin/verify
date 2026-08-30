@@ -18,11 +18,11 @@ host's problem. `tomllib` arrived in 3.11 and stock macOS still ships 3.9, so a
 plain `python3` shebang fails on the machine somebody adopts this onto. uv
 resolves `requires-python` above and downloads a suitable Python once.
 
-uv is not a new dependency: every language pack already declares `uv run` and
-`uvx`, so a project needs it before it needs a runner. `bin/check-probes` keeps
-a plain `python3` shebang on purpose, because its job is running a probe under
-an interpreter with nothing installed. `bin/check-style` keeps one too, and
-both were checked against 3.9.6.
+uv runs this file, so every project seeded from this template needs it,
+including one whose gate commands name it nowhere. `bin/check-probes` keeps a
+plain `python3` shebang on purpose, because its job is running a probe under an
+interpreter with nothing installed. `bin/check-style` keeps one too, and both
+were checked against 3.9.6.
 
 The version guard below stays for anyone running this file with an explicit
 interpreter, as a test does.
@@ -36,6 +36,7 @@ table, so the summary stays readable on a tree with three things wrong.
 from __future__ import annotations
 
 import argparse
+import os
 import shlex
 import subprocess
 import sys
@@ -146,6 +147,26 @@ def line(result: Result, width: int) -> str:
     )
 
 
+def summarise(text: str) -> None:
+    """Repeat the table into the GitHub job summary.
+
+    CI runs one `bin/verify` and names no gate, so the run summary is where a
+    failing gate names itself. A step per gate would put the gate list in the
+    workflow as well as in the declaration.
+
+    The failing gate's output stays in the log. A summary has a one megabyte
+    cap and a failing test run can exceed it, and the question the summary
+    answers is which gate went red.
+
+    Outside Actions the variable is unset and this writes nothing.
+    """
+    path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if not path:
+        return
+    with open(path, "a", encoding="utf-8") as fh:
+        fh.write("### Gates\n\n```\n" + text + "\n```\n")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Run the gates declared in " + GATES_REL)
     ap.add_argument("gate", nargs="*", help="Gate names. Default: every one, in order.")
@@ -182,24 +203,28 @@ def main() -> int:
         gates = [g for g in gates if g.name in set(args.gate)]
 
     results = []
+    table = []
     for gate in gates:
         result = run(gate, root)
         results.append(result)
+        table.append(line(result, width))
         # Printed as each one finishes, so a long gate is visibly the one being
         # waited on.
-        print(line(result, width), flush=True)
+        print(table[-1], flush=True)
 
     failed = [r for r in results if not r.ok]
     for result in failed:
         print(f"\n----- {result.gate.name} -----")
         print(result.output.rstrip() or "(no output)")
 
+    if failed:
+        tail = f"{len(failed)} of {len(results)} gate(s) failed: {', '.join(r.gate.name for r in failed)}"
+    else:
+        tail = f"{len(results)} gate(s) passed."
     print()
-    if not failed:
-        print(f"{len(results)} gate(s) passed.")
-        return 0
-    print(f"{len(failed)} of {len(results)} gate(s) failed: {', '.join(r.gate.name for r in failed)}")
-    return 1
+    print(tail)
+    summarise("\n".join([*table, "", tail]))
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

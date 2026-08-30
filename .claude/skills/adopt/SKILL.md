@@ -28,7 +28,7 @@ Ask all six in one pass. Five carry a default worth accepting.
 
 | Answer | Flag | Default |
 |---|---|---|
-| Which gates the project runs | `--pack python\|typescript\|python+typescript\|none` | **None. This is the one it will not guess.** |
+| Which gates the project runs, and what CI installs | `--pack python\|typescript\|python+typescript\|none` | **None. This is the one it will not guess.** |
 | The project's name | `--name` | The directory name. |
 | One line saying what it is | `--summary` | Left unanswered in `team.md` and in `CLAUDE.md`, marked as such. |
 | Who reviews and who merges | `--merge` | The author does not merge their own pull request. |
@@ -42,8 +42,13 @@ Guessing `python` from a `pyproject.toml` gets every project with a `web/` half
 wrong. Ask.
 
 The seeded gate list is a starting point that nothing verified. After the
-write, run each command in `.agentkit/gates.toml` once and correct the file
-where one fails for the wrong reason.
+write, run `bin/verify` once and correct `.agentkit/gates.toml` where a gate
+fails for the wrong reason. The seeded workflow runs the same command, so a
+gate that passes here passes there.
+
+The pack also picks what CI installs: uv for every pack, plus node, pnpm and an
+install step for a pack with pnpm gates. A gate added later that needs another
+tool needs a step in `.github/workflows/gates.yml`.
 
 The name and the summary reach two files: `.agentkit/team.md` and the project's
 `CLAUDE.md`, which an agent loads every turn. A summary nobody gave leaves both
@@ -78,11 +83,33 @@ before proposing a write.
 | `updated` | Matches the manifest, so it is the template's own older copy | Replaces it |
 | `kept` | Matches neither, so somebody here wrote it | Writes the template version and moves theirs to `<path>.local` |
 
+## What runs in CI
+
+`.github/workflows/gates.yml` and `process.yml` are seeded, and they are the
+only thing that runs any of this without a person.
+
+**The gates workflow names no gate.** One step, `bin/verify`, which reads
+`.agentkit/gates.toml`, so the project edits its gate list and CI follows with
+no second edit. The runner writes its table to the run summary, so a failing
+gate names itself there. What the pack decides is the toolchain: uv always,
+because `bin/verify` runs under it, plus node, pnpm and one `pnpm install` per
+directory a pnpm gate declares.
+
+**The process workflow runs five checks and reports two absent.** Rules 11, 13,
+16 and 24 are code and work on the first pull request. Rule 15's label taxonomy
+and rule 19's forbidden paths read `.agentkit/process.toml`, and `adopt` seeds
+no such file, because the area prefix is the project's own answer. Both report
+`absent` in the run summary until somebody writes it. Say that to the operator
+after the write, and offer to write the file from `gh label list`.
+
 ## The router is seeded once and replaced never
 
-`CLAUDE.md` and the three `.agentkit/` files are rendered from the answers
-rather than copied, so they carry no manifest row and no rerun touches them.
-Two outcomes, and neither writes over anything:
+`CLAUDE.md`, the three `.agentkit/` files and the two workflows are rendered
+from the answers rather than copied, so they carry no manifest row and no rerun
+touches them. A workflow this template replaced would leave the project's
+version at `gates.yml.local`, which GitHub runs nowhere, so the project would
+be running this template's copy without being told. Two outcomes, and neither
+writes over anything:
 
 | Outcome | What it means |
 |---|---|
@@ -148,7 +175,7 @@ Then, in the project:
 
 ```sh
 git status --short
-git add CLAUDE.md .agentkit docs .claude && git commit
+git add CLAUDE.md .agentkit .github docs .claude && git commit
 ```
 
 The manifest is committed, so both people see the same adoption state.
@@ -175,3 +202,5 @@ by hand. Read the two files side by side when the template's rule set moves.
 | "It only reported `kept`, so the run did nothing." | `kept` replaces the file. It is the loudest outcome, and it is why the plan is the default. |
 | "Their `CLAUDE.md` was thin, so I moved it aside." | Four options, and the operator picks. Moving theirs aside stops their instructions loading. |
 | "I answered rules 1 to 8 from the codebase." | Those are the project's to lock. A guess written there reads as settled to the next session. |
+| "I added a gate, so I added a step to the workflow." | The workflow names no gate. `bin/verify` reads the declaration, and a step naming one is the copy that goes stale. |
+| "The project has a `gates.yml` already, so CI is covered." | `adopt` reports `present` and writes nothing. Read theirs and say whether it runs `bin/verify`. |

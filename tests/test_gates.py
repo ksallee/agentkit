@@ -12,6 +12,7 @@ keeps this suite from failing every time a real gate changes.
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import tomllib
@@ -264,3 +265,72 @@ class TestWhatAProjectInherits:
         for pack, gates in adopt.PACKS.items():
             for name, command, _ in gates:
                 assert "&&" not in command and not command.startswith("cd "), f"{pack}/{name}"
+
+
+class TestWhatCIRuns:
+    """The workflow, here and in a project `adopt` seeds.
+
+    A step per gate is a second copy of the gate list. The copy this repository
+    kept made the file unseedable: every step read `bin/verify <name>` with
+    names no other project declares, and a seeded copy died on step two with
+    `No gate named probes`.
+    """
+
+    GATES_YML = ROOT / ".github" / "workflows" / "gates.yml"
+
+    def test_the_workflow_names_no_gate(self):
+        body = self.GATES_YML.read_text(encoding="utf-8")
+        for gate in DECLARED:
+            assert f"bin/verify {gate['name']}" not in body, gate["name"]
+
+    def test_the_workflow_runs_the_runner(self):
+        assert "- run: bin/verify\n" in self.GATES_YML.read_text(encoding="utf-8")
+
+    def test_the_seeded_workflow_agrees_with_this_one(self):
+        """Both files run a bare `bin/verify`, so neither holds a gate name."""
+        adopt = load(ROOT / "bin" / "adopt")
+        seeded = adopt.gates_workflow("python")
+        assert "      - run: bin/verify\n" in seeded
+        assert "      - run: bin/verify\n" in self.GATES_YML.read_text(encoding="utf-8")
+
+    def test_no_workflow_is_a_seeded_byte_copy(self):
+        """A replaced workflow leaves the project's edit in a `.local` GitHub never runs."""
+        tracked = __import__("json").loads((ROOT / "seeds.json").read_text())["tracked"]
+        assert not [t for t in tracked if t.startswith(".github")]
+
+    def test_the_runner_writes_its_table_to_the_job_summary(self, tmp_path):
+        """One step names no gate, so the summary is where a failing gate names itself."""
+        (tmp_path / ".agentkit").mkdir()
+        (tmp_path / ".agentkit" / "gates.toml").write_text(
+            '[[gate]]\nname = "ok"\ncommand = "python3 -c \'pass\'"\n'
+            '[[gate]]\nname = "broken"\ncommand = "python3 -c \'raise SystemExit(3)\'"\n',
+            encoding="utf-8",
+        )
+        summary = tmp_path / "summary.md"
+        done = subprocess.run(
+            [sys.executable, str(VERIFY), "--root", str(tmp_path)],
+            capture_output=True,
+            text=True,
+            cwd=ROOT,
+            env={**os.environ, "GITHUB_STEP_SUMMARY": str(summary)},
+        )
+        assert done.returncode == 1
+        written = summary.read_text(encoding="utf-8")
+        assert "broken" in written
+        assert "1 of 2 gate(s) failed" in written
+
+    def test_the_summary_is_written_nowhere_outside_actions(self, tmp_path):
+        (tmp_path / ".agentkit").mkdir()
+        (tmp_path / ".agentkit" / "gates.toml").write_text(
+            '[[gate]]\nname = "ok"\ncommand = "python3 -c \'pass\'"\n', encoding="utf-8"
+        )
+        env = {k: v for k, v in os.environ.items() if k != "GITHUB_STEP_SUMMARY"}
+        done = subprocess.run(
+            [sys.executable, str(VERIFY), "--root", str(tmp_path)],
+            capture_output=True,
+            text=True,
+            cwd=ROOT,
+            env=env,
+        )
+        assert done.returncode == 0
+        assert "1 gate(s) passed." in done.stdout

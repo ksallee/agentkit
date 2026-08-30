@@ -1,12 +1,15 @@
-# Rule 17's gates, run the same way a person runs them. Every step calls
-# `bin/verify <name>`, so no command appears here that is not declared in
-# `.agentkit/gates.toml`, and the rule text, the runner and this file cannot
-# drift apart.
+# Rule 17's gates. `bin/verify` runs everything `.agentkit/gates.toml`
+# declares, so no gate is named here and changing the gate list needs no edit
+# to this file.
 #
-# One step per gate rather than a bare `bin/verify`, so a failure names itself
-# in the job list instead of hiding in one log. Adding a gate to the
-# declaration means adding a step here: that is the residual drift, and it is
-# cheaper than making every gate declare its toolchain.
+# One step, and the per-gate result goes to the run summary. A step per gate
+# holds the gate names in a second file. That copy is what made this file
+# unseedable: `bin/adopt` renders a project's workflow once, the project owns
+# its gate list, and a step naming `probes` fails in a project that declares
+# none.
+#
+# `bin/adopt` renders the seeded equivalent, and `tests/test_gates.py` checks
+# that both name no gate.
 
 name: Gates
 
@@ -29,9 +32,4 @@ jobs:
         with:
           enable-cache: true
 
-      # `bin/check-style` needs python3 alone and no project, which is why it
-      # runs first and why it works before uv has resolved anything.
-      - run: bin/verify style
-      - run: bin/verify probes
-      - run: bin/verify lint
-      - run: bin/verify tests
+      - run: bin/verify
