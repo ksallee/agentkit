@@ -28,7 +28,7 @@ nothing, because nothing is written until the plan is approved:
   files. Absent means nothing here has been seeded.
 
 `bin/adopt` reads the manifest for itself, so a misreading costs what the
-session does around the tool. A first adoption needs all five answers before
+session does around the tool. A first adoption needs all six answers before
 anything is written. An update has them in `.agentkit/team.md` already, and
 what it needs read back is which files a rerun replaces and which it keeps. The
 wrong directory means every one of those questions was asked about the wrong
@@ -47,13 +47,29 @@ Check these and print the fix. Don't work around them.
 | It has a commit, or the operator knows what a write costs without one | `git -C <project> rev-parse HEAD` | Say which of the two states the target is in before writing |
 
 **A new project with an empty remote and no local directory is cloned, never
-created by hand.** `git clone <remote> <path>` brings `origin` and the server's
-default branch name with it. `git init` takes whatever `init.defaultBranch`
-says on that machine, so a local `master` pushed to a remote whose default is
-`main` is a two-branch repository, found at the first push. `adopt` performs no
-clone, and the directory has to be there before it runs: `git -C` on a path
-that does not exist fails with `cannot change to '<path>': No such file or
-directory`, a different failure from a directory that is not a repository.
+created by hand.** The clone brings `origin` in one step, and that is the whole
+of what it saves. It brings no branch name. An empty GitHub repository has none
+to send: a branch name there is a property of a ref, and an empty repository has
+no refs. Measured 2026-08-30 on a repository created for it: `defaultBranchRef`
+came back with an empty name and `isEmpty` true, `git ls-remote --symref origin
+HEAD` printed nothing, and the clone landed on `main` because that is what the
+machine's `init.defaultBranch` said.
+
+**So read the branch name after the clone and before the first commit, and
+rename it when it does not match.** `git init` reads the same setting, so the
+clone protects nothing here on its own. A machine set to `master` commits the
+adoption there, and the `gates.yml` the same run seeds pushes on `main` alone,
+so CI runs on nothing until somebody notices.
+
+```sh
+git -C <path> branch --show-current
+git -C <path> branch -m main
+```
+
+`adopt` performs no clone, and the directory has to be there before it runs:
+`git -C` on a path that does not exist fails with `cannot change to '<path>':
+No such file or directory`, a different failure from a directory that is not a
+repository.
 
 The last two rows are one precondition read twice, and the second carries the
 reason. Adoption replaces files and `git checkout` is the way back, so a
@@ -64,9 +80,10 @@ directory was empty. Say which state the target is in, and where it has files an
 say what is in the tree before writing over it. `--phase` reads the same fact
 and defaults to `shaping` when there is no commit.
 
-## The five answers
+## The six answers
 
-Four carry a default worth accepting.
+Five are in the table below, and `surface` is the sixth, under `### The one
+design setting`. Four carry a default worth accepting.
 
 **Every question carries its options and a recommendation.** That is the
 property, and it is the one that failed in #128: four rounds there were spent
@@ -79,13 +96,18 @@ claude question system, with all questions in one go, that would be the
 simplest." It renders each question with its options as choices, so the options
 are in front of the operator instead of in a paragraph they have to read back.
 
-**It takes four questions per call, so the set is two calls.** Put the four
-with a fixed range in the first: the pack, who merges, shaping or building, and
-`surface`. Each option carries what it costs in its `description`, and the one
-you would take goes first, labelled `(Recommended)`. The second call takes the
-name and the summary, which are free text: give the default as the first option
-and let the operator type over it, since `AskUserQuestion` always offers
-`Other`.
+**One call carries all six.** The tool takes four questions, and six fit
+because two of them are answers the run already holds. The four with a fixed
+range go in the form: the pack, who merges, shaping or building, and `surface`.
+Each option carries what it costs in its `description`, and the one you would
+take goes first, labelled `(Recommended)`.
+
+**The name and the summary are stated as defaults in the same message, and the
+operator corrects them.** Both are free text, so a form slot buys nothing over a
+line somebody can type over. Say where each one came from: the name is the
+directory name, and the summary is usually already in the request that started
+the run. Say what decided the recommended phase too, which is whether the target
+has a commit. A default whose source is stated is one the operator can check.
 
 Asking in bulk is not what went wrong in #128, and batching does not bring it
 back. What brings it back is a question with no options in it.
@@ -276,9 +298,12 @@ writes over anything:
 rewritten on every run, with every line outside it left alone. Git reads each
 line of a `.gitignore` on its own, so the block sits beside whatever the
 project already ignores and neither half changes what the other means. Five
-lines go in: `.agentkit/local.*`, which rule 0 requires, `.claude/worktrees/`,
-and the `design/*.dc.html`, `design/*.classes.html` and `design/canvas.json` an
-artboard run writes.
+lines go in for every pack: `.agentkit/local.*`, which rule 0 requires,
+`.claude/worktrees/`, and the `design/*.dc.html`, `design/*.classes.html` and
+`design/canvas.json` an artboard run writes. `node_modules/` is a sixth, and the
+`typescript` and `python+typescript` packs get it because their gates run pnpm.
+Measured 2026-08-30 by adopting each of the four packs into an empty repository
+and reading the block back.
 
 | Outcome | What it means |
 |---|---|
@@ -393,12 +418,24 @@ asserted by `bin/check-process` over a pull request, and a bootstrap commit has
 none. Where the project already has history the adoption is ordinary work, and
 it takes an issue and a branch like anything else.
 
+**The subject is imperative with no issue number**: `Adopt agentkit into
+<project>`. The body carries the six answers and the gate table, because there
+is no issue and no pull request holding them here, and `git blame` on a seeded
+file is then the one path back to which pack was chosen. Run `bin/check-style`
+over the message before committing, the same as rule 24 asks of every other
+commit.
+
 ## Reporting the run back
 
 **Where the project stands, then what is left, and stop.** Two short paragraphs
 and a list. An adoption report is read once, by somebody deciding whether they
 can start working, and a wall of detail buries the two lines they needed. Put
 anything longer in an issue and name it in the list.
+
+**What is left names `design/screens.json`.** It seeds one screen called `Home`
+at `/` against `http://localhost:5173`, a guess made before anybody saw the
+project, so the first capture run reaches nothing until somebody replaces it. It
+goes in the list beside `shape` and the missing `area:` labels.
 
 Three things it gets wrong by default. All three were paid for in #109's phase
 A, where the operator had to ask four times for something the report should
