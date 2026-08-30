@@ -1,0 +1,206 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# ///
+"""Run the gates declared in .agentkit/gates.toml.
+
+    bin/verify                 # every gate, in declaration order
+    bin/verify tests style     # only the named gates
+    bin/verify --list          # what is declared, and nothing else
+    bin/verify --root ../other # a project whose gates are declared elsewhere
+
+Rule 17 says every gate declared in `.agentkit/gates.toml` passes. This is the
+only thing that reads that file and runs it, so the rule text names no command
+and cannot drift from what CI does: each CI step calls `bin/verify <name>`.
+
+Standard library only, and run through uv so the interpreter is never the
+host's problem. `tomllib` arrived in 3.11 and stock macOS still ships 3.9, so a
+plain `python3` shebang fails on the machine somebody adopts this onto. uv
+resolves `requires-python` above and downloads a suitable Python once.
+
+uv is not a new dependency: every language pack already declares `uv run` and
+`uvx`, so a project needs it before it needs a runner. `bin/check-probes` keeps
+a plain `python3` shebang on purpose, because its job is running a probe under
+an interpreter with nothing installed. `bin/check-style` keeps one too, and
+both were checked against 3.9.6.
+
+The version guard below stays for anyone running this file with an explicit
+interpreter, which is what a test does.
+
+Every gate runs even after one fails. Stopping at the first failure hides the
+second, and the run before a push is the one where you want both. Output from a
+passing gate is dropped and output from a failing one is printed after the
+table, so the summary stays readable on a tree with three things wrong.
+"""
+
+from __future__ import annotations
+
+import argparse
+import shlex
+import subprocess
+import sys
+import time
+from dataclasses import dataclass
+from pathlib import Path
+
+# Where the gates are declared, relative to a project root. `bin/verify` sits
+# at the root of whichever project seeded it, so its own location is the right
+# default and `--root` is what a test points at a fixture.
+DEFAULT_ROOT = Path(__file__).resolve().parent.parent
+
+GATES_REL = ".agentkit/gates.toml"
+
+# Wide enough for the longest name in this project's file, and it grows to fit
+# a longer one. A misaligned column is easier to read than a truncated name.
+NAME_COLUMN = 10
+
+
+@dataclass(frozen=True)
+class Gate:
+    name: str
+    command: str
+    cwd: str | None
+
+    # Resolved against the repository root, so `bin/verify` behaves the same
+    # when called from `web/` as from the root.
+    def workdir(self, root: Path) -> Path:
+        return root / self.cwd if self.cwd else root
+
+
+@dataclass
+class Result:
+    gate: Gate
+    ok: bool
+    seconds: float
+    output: str
+
+
+def load(path: Path) -> list[Gate]:
+    try:
+        import tomllib
+    except ModuleNotFoundError:
+        sys.exit(
+            f"bin/verify needs Python 3.11 or newer for tomllib, and this is "
+            f"{sys.version_info.major}.{sys.version_info.minor} at {sys.executable}."
+        )
+
+    if not path.exists():
+        sys.exit(f"No gate declaration at {path}. Rule 17 has nothing to run.")
+
+    try:
+        declared = tomllib.loads(path.read_text(encoding="utf-8"))
+    except tomllib.TOMLDecodeError as exc:
+        sys.exit(f"{path} is not valid TOML: {exc}")
+
+    gates = []
+    for n, entry in enumerate(declared.get("gate", []), 1):
+        missing = [k for k in ("name", "command") if not entry.get(k)]
+        if missing:
+            sys.exit(f"{path}: gate {n} declares no {' and no '.join(missing)}.")
+        gates.append(Gate(entry["name"], entry["command"], entry.get("cwd")))
+
+    if not gates:
+        # A project that declared no gates has satisfied rule 17 vacuously, and
+        # the `none` pack seeds exactly that. A missing file above is different:
+        # that is a project whose setup broke, not one that chose nothing.
+        print(f"{path} declares no gates.")
+        return []
+
+    names = [g.name for g in gates]
+    duplicated = sorted({n for n in names if names.count(n) > 1})
+    if duplicated:
+        sys.exit(f"{path}: {', '.join(duplicated)} declared more than once.")
+    return gates
+
+
+def run(gate: Gate, root: Path) -> Result:
+    started = time.monotonic()
+    try:
+        # No shell. A command in the declaration is an argument list, which keeps
+        # the file portable and keeps a quoting mistake from becoming an
+        # executed one.
+        done = subprocess.run(
+            shlex.split(gate.command),
+            cwd=gate.workdir(root),
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError as exc:
+        return Result(gate, False, time.monotonic() - started, f"{exc}\n")
+    except NotADirectoryError:
+        return Result(gate, False, time.monotonic() - started, f"No directory {gate.cwd}\n")
+    return Result(
+        gate,
+        done.returncode == 0,
+        time.monotonic() - started,
+        (done.stdout or "") + (done.stderr or ""),
+    )
+
+
+def line(result: Result, width: int) -> str:
+    verdict = "pass" if result.ok else "FAIL"
+    where = f"  ({result.gate.cwd}/)" if result.gate.cwd else ""
+    return (
+        f"  {verdict}  {result.gate.name:<{width}}  "
+        f"{result.gate.command}{where}  {result.seconds:.1f}s"
+    )
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="Run the gates declared in " + GATES_REL)
+    ap.add_argument("gate", nargs="*", help="Gate names. Default: every one, in order.")
+    ap.add_argument("--list", action="store_true", help="Print what is declared and stop.")
+    ap.add_argument(
+        "--root",
+        default=str(DEFAULT_ROOT),
+        help="Project root holding " + GATES_REL + ". Default: the one this script sits in.",
+    )
+    args = ap.parse_args()
+
+    root = Path(args.root).resolve()
+    gates = load(root / GATES_REL)
+    if not gates:
+        return 0
+    width = max(NAME_COLUMN, *(len(g.name) for g in gates))
+
+    if args.list:
+        for gate in gates:
+            where = f"  ({gate.cwd}/)" if gate.cwd else ""
+            print(f"  {gate.name:<{width}}  {gate.command}{where}")
+        return 0
+
+    if args.gate:
+        declared = {g.name: g for g in gates}
+        unknown = [n for n in args.gate if n not in declared]
+        if unknown:
+            sys.exit(
+                f"No gate named {', '.join(unknown)} in {GATES_REL}. "
+                f"Declared: {', '.join(declared)}."
+            )
+        # Declaration order, ignoring the order they were typed, so a subset runs
+        # cheapest first for the same reason the whole set does.
+        gates = [g for g in gates if g.name in set(args.gate)]
+
+    results = []
+    for gate in gates:
+        result = run(gate, root)
+        results.append(result)
+        # Printed as each one finishes, so a long gate is visibly the one being
+        # waited on.
+        print(line(result, width), flush=True)
+
+    failed = [r for r in results if not r.ok]
+    for result in failed:
+        print(f"\n----- {result.gate.name} -----")
+        print(result.output.rstrip() or "(no output)")
+
+    print()
+    if not failed:
+        print(f"{len(results)} gate(s) passed.")
+        return 0
+    print(f"{len(failed)} of {len(results)} gate(s) failed: {', '.join(r.gate.name for r in failed)}")
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

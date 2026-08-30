@@ -27,8 +27,7 @@ suite is not a preference. **Personal wins on taste**: how work is delivered,
 which guide is read, how large a pull request should be.
 
 `.agentkit/team.md` states the project's conventions and who owns what.
-`.agentkit/gates.toml` declares the gate commands. What runs them is not
-built yet (#7).
+`.agentkit/gates.toml` declares the gate commands and `bin/verify` runs them.
 `.agentkit/phase.json` says `shaping` or `building`. `context.md` is one
 person's own file, and its absence means nobody has been asked yet.
 
@@ -70,9 +69,9 @@ a reader of the pull request expect it?
 
 [`docs/development/STYLE.md`](docs/development/STYLE.md) governs markdown,
 comments, docstrings, commit messages, issue and pull request bodies. No em
-dashes, no "not X, Y", no hedging preambles, no marketing vocabulary. The
-mechanical half of this is gated by a script in `mac-hours`, and porting it
-here is #7. Until then a person checks it.
+dashes, no "not X, Y", no hedging preambles, no marketing vocabulary.
+`bin/check-style` gates the mechanical half, over this repository and over any
+project it is given.
 
 ## The rest load when they apply
 
@@ -104,8 +103,6 @@ somebody clones. There is no plugin and no install step.
 **`adopt`** seeds this scaffolding into a project and updates it later. It is
 the only skill here.
 
-The front half, the loop and the design skills are settled and not built. Each
-is being made portable in `mac-hours` first, because that is where they work
-today and where a regression is visible. #7 carries the list and what each one
-waits on. Nothing is named here until it exists, so that a reader who goes
-looking finds what the router says they will.
+The front half, the loop and the design skills are settled and not built.
+#10, #11 and #12 carry them. Nothing is named here until it exists, so a
+reader who goes looking finds what the router says they will.

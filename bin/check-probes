@@ -1,0 +1,114 @@
+#!/usr/bin/env python3
+"""Gate rule 9: every probe parses and runs on a bare interpreter.
+
+    bin/check-probes            # probes/ beside this script
+    bin/check-probes some/dir   # somewhere else
+
+Rule 9 says a probe is standard library only, so that it still works when the
+project itself does not build. That property is worth nothing unless something
+checks it, and it breaks silently: a probe importing `hours` runs fine for
+whoever wrote it, with the virtualenv already active.
+
+This checks that a probe imports and runs. Whether a probe reports usefully
+when the service it probes is absent is the project's own assertion, because
+only the project knows which port is free and which service is optional. Keep
+that one as a step in the workflow beside this gate.
+
+Standard library only itself. Each probe runs in a subprocess under the
+interpreter the current virtualenv was built from, because a probe importing
+`hours` succeeds under `.venv/bin/python3` and that is the exact failure this
+gate exists to catch. `-I` on top of that drops PYTHONPATH and the script's own
+directory from the path.
+"""
+
+from __future__ import annotations
+
+import argparse
+import ast
+import subprocess
+import sys
+from pathlib import Path
+
+# A probe prints and exits. `--help` is the cheapest call that proves the file
+# imported cleanly, which is the property rule 9 is actually about.
+HELP_TIMEOUT_SECONDS = 30
+
+
+def bare_interpreter() -> str:
+    """The interpreter with nothing installed into it.
+
+    Inside a virtualenv `sys.base_prefix` is the interpreter it was built from,
+    which has no project in its site-packages. Outside one the two prefixes are
+    equal and this is `sys.executable` unchanged. Isolation comes from choosing
+    the interpreter; no flag excludes a venv's own site-packages.
+    """
+    if sys.prefix == sys.base_prefix:
+        return sys.executable
+    for name in ("python3", "python"):
+        candidate = Path(sys.base_prefix) / "bin" / name
+        if candidate.exists():
+            return str(candidate)
+    return sys.executable
+
+
+def problems(probe: Path) -> list[str]:
+    found = []
+    try:
+        ast.parse(probe.read_text(encoding="utf-8"))
+    except (OSError, SyntaxError, UnicodeDecodeError) as exc:
+        return [f"{probe.name}: does not parse ({exc})"]
+
+    try:
+        done = subprocess.run(
+            [bare_interpreter(), "-I", str(probe), "--help"],
+            capture_output=True,
+            text=True,
+            timeout=HELP_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        return [f"{probe.name}: --help did not return in {HELP_TIMEOUT_SECONDS}s"]
+
+    if done.returncode != 0:
+        detail = (done.stderr or done.stdout or "").strip().splitlines()
+        found.append(f"{probe.name}: --help exited {done.returncode}")
+        found += [f"    {line}" for line in detail[-4:]]
+    return found
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument(
+        "path",
+        nargs="?",
+        default=str(Path(__file__).resolve().parent.parent / "probes"),
+        help="Directory of probes. Default: probes/ beside this script.",
+    )
+    args = ap.parse_args()
+
+    root = Path(args.path)
+    if not root.is_dir():
+        # Rule 9 says a project with no external interface should drop the rule
+        # rather than keep a dead one, so a declared probes gate with no
+        # directory is a misconfiguration and says so.
+        sys.exit(f"{root} is not a directory. Drop the probes gate, or add probes.")
+
+    probes = sorted(p for p in root.glob("*.py") if p.name != "__init__.py")
+    if not probes:
+        # An empty probes/ is correct in a project with no external interface to
+        # probe. Rule 9 applies where there is a third-party payload, and a
+        # project with none gets a directory nobody fills.
+        print(f"No probes in {root}.")
+        return 0
+
+    found = [line for probe in probes for line in problems(probe)]
+    if not found:
+        print(f"{len(probes)} probe(s) parse and run on a bare interpreter.")
+        return 0
+    for line in found:
+        print(f"  {line}")
+    print(f"\n{len(probes)} probe(s) checked. See rule 9 in CLAUDE.md.")
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -24,9 +24,9 @@ Every word committed follows [`STYLE.md`](STYLE.md).
 ## What a machine checks
 
 A rule with no mechanical consumer decays into a convention people follow when
-they remember. This is the design, and **none of it is built here yet** (#7).
-The table says what a project gets once the checks are seeded, and what each
-rule would be left to a person without them:
+they remember. Rules 17 and 24 are checked here today, by `bin/verify` over
+`.agentkit/gates.toml`. The rest of the table is the design, and #10 is the
+process job that asserts it:
 
 | Rule | Asserted by |
 |---|---|

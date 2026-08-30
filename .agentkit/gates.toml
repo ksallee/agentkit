@@ -1,0 +1,47 @@
+# Every gate this repository runs, in order. Rule 17 cites this file and
+# nothing else declares a gate, so the rule text, the runner and CI cannot
+# disagree with each other.
+#
+# This repository gates itself with the same file it seeds into a project,
+# which is the first real test of the abstraction. `bin/verify` is the only
+# thing that reads it.
+#
+# A gate declares a name, a command and an optional working directory. There is
+# no field for a gate that reports without failing and none for one that runs
+# only in CI: a gate that cannot fail is not a gate, and the rule reads "every
+# gate declared here passes".
+#
+# No probes gate. Rule 9 says a project with no external interface should drop
+# the rule rather than keep a dead one, and there is no `probes/` here.
+# `bin/check-probes` still travels, for the projects that do.
+#
+# Order is cheapest first, so a broken tree reports its fastest failure early
+# even though `bin/verify` runs every gate before it exits.
+
+[[gate]]
+name = "style"
+command = "bin/check-style ."
+
+[[gate]]
+name = "lint"
+command = "uvx ruff check bin tests"
+
+# The interpreter is named here rather than in a `.python-version` file.
+# That file is read by pyenv as well as uv, and the two disagree: uv accepts a
+# series like `3.14`, pyenv wants a patch version it has already installed, and
+# a pyenv user gets `version 3.14 is not installed` from every command run in
+# this directory. Measured 2026-08-29. `uv run --python` asks uv directly, and
+# uv fetches the interpreter if the host has none.
+#
+# 3.14 is the latest stable, so the scaffolding is exercised on what a new
+# project would get. A project seeded from a pack names no version and keeps
+# whatever it chose.
+#
+# `--with pytest` because this repository is a template and not a package:
+# there is no pyproject declaring a dev dependency, so nothing would install
+# pytest. Without it the gate passes on a machine that happens to have pytest
+# and fails on a clean runner, which is what happened the first time CI ran.
+# A seeded project declares pytest itself, so its pack names the plain command.
+[[gate]]
+name = "tests"
+command = "uv run --python 3.14 --with pytest pytest tests/ -q"

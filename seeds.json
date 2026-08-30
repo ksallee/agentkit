@@ -1,8 +1,11 @@
 {
   "version": 1,
-  "note": "Every path adopt seeds into a project and tracks in the manifest. An entry ending in / expands to every file under it, so a file landing on another branch joins this list when it lands. CLAUDE.md is absent on purpose: this repository's copy describes agentkit itself, and the skeleton a project gets is issue 1.",
+  "note": "Every path adopt seeds into a project and tracks in the manifest. An entry ending in / expands to every file under it, so a file landing on another branch joins this list when it lands. The three bin/ entries are named one by one because bin/adopt is this template's own tool and does not belong in a project it seeded. CLAUDE.md is absent on purpose: this repository's copy describes agentkit itself, and the skeleton a project gets has no issue yet.",
   "tracked": [
     ".claude/skills/",
+    "bin/check-probes",
+    "bin/check-style",
+    "bin/verify",
     "docs/development/"
   ]
 }
