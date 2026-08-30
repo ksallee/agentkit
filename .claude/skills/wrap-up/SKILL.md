@@ -1,6 +1,6 @@
 ---
 name: wrap-up
-description: End a session properly. Checks the repository was left clean, reads the prose the session added against STYLE.md, and writes every preference the session stated into the file that reads it next. Use when someone says "wrap up", "call it a day", "let's stop here", "can I exit", or invokes `/done`.
+description: End a session and leave the tree where the next session can start. Covers the gates, the worktrees and merged branches an agent session leaves behind, the prose the session added read against STYLE.md, every preference the session stated routed to the file that reads it next and recorded with `bin/surface`, the documents the session invalidated, and the recap. Use when someone says "wrap up", "call it a day", "let's stop here", "can I exit", or invokes `/done`.
 ---
 
 # Wrapping up

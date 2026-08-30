@@ -1,6 +1,6 @@
 ---
 name: design-process
-description: How design work is done: decide before drawing, research before variants, sourced numbers, variants named after their reference, a measurement instead of a look, a second read against the guide, and a deliverable the team layer names. Use at the start of any design task, and when someone asks how the wireframes were made.
+description: How design work is done here, from the product decision before any UI to the deliverable and the decision written where it is read next. Covers the guide read before the person, greyscale wireframes from a script, research and moodboards with sourced numbers, variants named after their reference, a rendered measurement instead of a look, and a second read against the guide. Use at the start of any design task, and when someone asks how the wireframes were made.
 ---
 
 # Design process

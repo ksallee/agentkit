@@ -1,6 +1,6 @@
 ---
 name: adopt
-description: Seed the agentkit scaffolding into a project, or update a project that already has it. Asks the six answers the team layer and the router need, shows the plan, and writes only after somebody has read it. Use when someone says "adopt agentkit here", "set this project up", "update the scaffolding", or asks what a rerun would change.
+description: Seed the agentkit scaffolding into a project, or update a project that already has it. Covers the answers the team layer and the router need, the plan somebody reads before anything is written, what a rerun replaces and what it keeps, and what to do when the project already has its own CLAUDE.md. Use when someone says "adopt agentkit here", "set this project up", "update the scaffolding", or asks what a rerun would change.
 ---
 
 # Adopting the scaffolding

@@ -174,3 +174,102 @@ def test_no_tabled_outcome_is_unreportable() -> None:
     """A row for a status nothing prints sends the operator looking for it."""
     extra = sorted(TABLED - REPORTED)
     assert not extra, f"the skill tables outcomes bin/adopt cannot report: {extra}"
+
+
+# ---------------------------------------------------------------------------
+# A skill's `description` against the step count in its own body
+
+
+# The frontmatter is one `key: value` per line and the loader reads
+# `description` out of it. The parser stops at the next key, so a description
+# that wrapped onto a second line is read whole and the guard below fails
+# loudly instead of matching half a sentence.
+FRONTMATTER = re.compile(r"\A---\n(.*?)\n---\n", re.S)
+DESCRIPTION = re.compile(r"^description:(.*?)(?=^[a-z][a-z0-9_-]*:|\Z)", re.M | re.S)
+
+# The numbered headings a body walks through. `## Preconditions` is not one.
+STEP_HEADING = re.compile(r"^## \d+\.", re.M)
+
+# Spelled out because a description says "five" where a heading says `5.`, and
+# both spellings make the same claim about the same file. `one` is in the list
+# and costs a description the pronoun: "where the next one can start" reads as
+# a count of one. STYLE.md's `## Required` asks for the noun there anyway.
+NUMBER_WORDS = {
+    "zero": 0,
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+    "eleven": 11,
+    "twelve": 12,
+    "thirteen": 13,
+    "fourteen": 14,
+    "fifteen": 15,
+    "sixteen": 16,
+    "seventeen": 17,
+    "eighteen": 18,
+    "nineteen": 19,
+    "twenty": 20,
+}
+NUMBER = re.compile(r"\b(\d+|" + "|".join(NUMBER_WORDS) + r")\b", re.I)
+
+
+def _skill_text(name: str) -> str:
+    return (SKILLS / name / "SKILL.md").read_text(encoding="utf-8")
+
+
+def _description(text: str) -> str:
+    front = FRONTMATTER.match(text)
+    if not front:
+        return ""
+    found = DESCRIPTION.search(front.group(1) + "\n")
+    return " ".join(found.group(1).split()) if found else ""
+
+
+def _claimed_numbers(description: str) -> list[int]:
+    return [
+        int(found) if found.isdigit() else NUMBER_WORDS[found.lower()]
+        for found in NUMBER.findall(description)
+    ]
+
+
+DESCRIBED = {name: _description(_skill_text(name)) for name in sorted(PRESENT)}
+STEPS = {name: len(STEP_HEADING.findall(_skill_text(name))) for name in sorted(PRESENT)}
+
+
+def test_every_skill_has_a_description_and_some_carry_steps() -> None:
+    """Two extractions that matched nothing would agree with everything."""
+    empty = sorted(name for name, text in DESCRIBED.items() if not text)
+    assert not empty, f"no `description` read out of {empty}; the frontmatter shape changed"
+    assert any(STEPS.values()), "no `## N.` heading read anywhere; the heading shape changed"
+
+
+def test_no_description_states_a_step_count_its_body_contradicts() -> None:
+    """The drift #44 measured: two descriptions counted their own body wrong.
+
+    `design-process` said seven phases over a body of nine steps, and `wrap-up`
+    said three over five. A description is what the loader shows, and #34 left
+    it standing in place of the list `CLAUDE.md` used to carry, so a wrong
+    count there is read every session and corrected by nobody.
+
+    A count is arithmetic and no judgment about phrasing, which keeps this
+    clear of STYLE.md's argument against a checker that guesses. It lives here
+    rather than in `bin/check-style` because that gate reads one line at a time
+    and ships into every adopted project, where `## N.` means whatever that
+    project's skills mean by it.
+    """
+    wrong = {
+        name: (claimed, STEPS[name])
+        for name, description in DESCRIBED.items()
+        if (claimed := [n for n in _claimed_numbers(description) if n != STEPS[name]])
+    }
+    assert not wrong, (
+        f"a description names a number its body does not have, as "
+        f"name: (claimed, `## N.` headings): {wrong}"
+    )
