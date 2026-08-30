@@ -25,7 +25,7 @@ an interpreter with nothing installed. `bin/check-style` keeps one too, and
 both were checked against 3.9.6.
 
 The version guard below stays for anyone running this file with an explicit
-interpreter, which is what a test does.
+interpreter, as a test does.
 
 Every gate runs even after one fails. Stopping at the first failure hides the
 second, and the run before a push is the one where you want both. Output from a
@@ -102,7 +102,7 @@ def load(path: Path) -> list[Gate]:
     if not gates:
         # A project that declared no gates has satisfied rule 17 vacuously, and
         # the `none` pack seeds exactly that. A missing file above is different:
-        # that is a project whose setup broke, not one that chose nothing.
+        # that project's setup broke; it didn't choose an empty list.
         print(f"{path} declares no gates.")
         return []
 
