@@ -122,6 +122,41 @@ writes over anything:
 | `seeded` | Nothing was there. `adopt` wrote it from the answers |
 | `present` | A file is there. `adopt` left it exactly as it found it |
 
+## The ignore file is the one merge this tool performs
+
+`.gitignore` gets a block between `# agentkit start` and `# agentkit end`,
+rewritten on every run, with every line outside it left alone. Git reads each
+line of a `.gitignore` on its own, so the block sits beside whatever the
+project already ignores and neither half changes what the other means. Two
+lines go in: `.agentkit/local.*`, which rule 0 requires, and
+`.claude/worktrees/`.
+
+| Outcome | What it means |
+|---|---|
+| `seeded` | No `.gitignore` there. `adopt` wrote one carrying the block |
+| `appended` | The project has one and it carries no block. The block goes on the end and no line above it moves |
+| `unchanged` | The block is there and already says this |
+| `updated` | The block is there and said something older. Only what sits between the markers is rewritten |
+| `kept` | The file opens a block and never closes it. Nothing was written |
+
+`kept` here writes nothing and leaves no sidecar, which is where it parts from
+`kept` on a seeded file. The end marker is where a rewrite stops, so a guess at
+it would delete the project's own ignores. Tell the operator to put the marker
+back or delete the opening one, then rerun.
+
+## The `skills` section names what the operator's own machine shadows
+
+The report prints the personal skills root, then one `shadowed <name>` line per
+skill this template seeds that the root already holds. Two skills of one name
+both load and a typed `/name` reaches the personal copy, measured 2026-08-30 on
+Claude Code 2.1.251 (#40), so each name on that list is a skill this run writes
+into the project and nobody on this machine can reach by name. That directory
+is read and never written to, and the run continues.
+
+Read every `shadowed` line back and offer to rename the project's copy or move
+the personal one aside. A line saying `probes/skill_precedence.py` did not load
+means nothing was listed, so say that no collision was ruled out.
+
 ## When the project already has a CLAUDE.md
 
 **This is a question, and the operator answers it.** `bin/adopt` prints
