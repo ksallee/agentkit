@@ -84,9 +84,13 @@ issue -> branch -> work -> PR -> review -> squash merge
 ```bash
 gh issue create --title "..." --label "area: rules,enhancement" --body-file /tmp/issue.md
 gh issue edit 12 --add-assignee @me
-git fetch origin && git switch -c 12-short-slug origin/main
+git fetch origin && git switch -c 12-short-slug origin/main   # alone in a clean tree
 gh pr create --body-file /tmp/pr.md
 ```
+
+That `git switch` belongs to a session working alone. Anywhere another session
+might be in the same clone, rule 11 says to cut a worktree instead, and says
+what the switch does to their uncommitted files when it does not.
 
 ### 10. Every change starts as a GitHub issue
 
