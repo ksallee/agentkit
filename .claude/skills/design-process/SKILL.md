@@ -17,7 +17,6 @@ This skill is the method. Six inputs are the project's.
 | The constraints on every screen | the design guide under `docs/` | Ask, and write the answers there |
 | The person the work is delivered to | `.agentkit/local.md` | Nobody has been asked yet (rule 0) |
 | Where a finished design lands | `.agentkit/team.md`, `## Design`, `surface` | Ask. Step 8 has three answers and no default |
-| Which reference list is in play | `.agentkit/team.md`, `## Design`, `references` | `curated`, the `design-references` file |
 | The capture, and the screens it opens | `design/capture.js` with `design/capture.py` or `design/capture.mjs`, seeded by `adopt`, and `design/screens.json` | Adopt the scaffolding. Step 6 says what the shipped capture asserts and what it leaves to you |
 | The artboard generator, and the components it draws with | `design/build.py` or `design/build.mjs`, seeded by `adopt`; the components are the project's | Adopt the scaffolding. It ships the palette, the scales and one entry point, and no component |
 

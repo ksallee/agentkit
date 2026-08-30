@@ -684,16 +684,17 @@ def check(template: Path, project: Path, pack: str = "none") -> int:
 # defect that a hand-written file and this renderer both claim one format with
 # nothing checking they agree. `tests/test_adopt.py` checks the headings.
 #
-# `references` is opt in: `curated` keeps the pipeline on a list this project
-# maintains, and the design skills work with no third-party service.
+# `surface` is the only design setting. A `references` row carried two values
+# until #123: `curated`, the list `design-references` holds, and `refero`, a
+# third-party catalogue. Refero's MCP access is sold on a Pro plan and the
+# address the skill named was a marketing page, so the value came out. A
+# setting with one legal value is a question with nothing to answer, so the row
+# came out with it. #131 is what would bring the row back.
 DESIGN_TABLE = (
     "| Setting | Values | Meaning |\n"
     "|---|---|---|\n"
     "| surface | canvas, file, none | where a finished design lands |\n"
-    "| references | curated, refero | where `design-references` gets its list |\n"
 )
-
-REFERENCES = ("curated", "refero")
 
 # What `team_files` renders, for the plan, which has no answers to render
 # from. `tests/test_adopt.py` checks the two agree.
@@ -742,7 +743,6 @@ def team_files(answers: dict[str, str]) -> dict[str, str]:
             "What a reader would get wrong without being told. Empty is honest\n"
             "until something has actually been settled.\n\n"
             "## Design\n\n" + DESIGN_TABLE + "\n"
-            f"`references` is `{answers['references']}`, answered at adoption.\n"
             "`surface` waits until somebody picks one.\n"
         ),
     }
@@ -1604,11 +1604,6 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--phase", choices=("shaping", "building"), help="Defaults by whether the target has a commit.")
     ap.add_argument("--merge", default="", help="Who reviews and who merges.")
     ap.add_argument(
-        "--references",
-        choices=REFERENCES,
-        help="Where the design pipeline gets its reference list. Default: curated.",
-    )
-    ap.add_argument(
         "--no-gates",
         action="store_true",
         help="Skip the gate run a first write ends with, and the install before it.",
@@ -1657,9 +1652,6 @@ def main(argv: list[str] | None = None) -> int:
         "summary": args.summary or "Unanswered. One line saying what this project is.",
         "phase": args.phase or default_phase(project),
         "merge": args.merge or "The author does not merge their own pull request.",
-        # Opt in, so a project that never answers keeps the design pipeline off
-        # any third-party service.
-        "references": args.references or REFERENCES[0],
     }
 
     # Read before anything is written, because the write creates the manifest

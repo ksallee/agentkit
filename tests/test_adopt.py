@@ -41,7 +41,6 @@ ANSWERS = {
     "summary": "A project.",
     "phase": "building",
     "merge": "Both of us review.",
-    "references": "curated",
 }
 
 SKILL = ".claude/skills/demo/SKILL.md"
@@ -1289,11 +1288,12 @@ class TestTheDesignSettings:
     `team_files()`, and nothing checked the two agree.
     """
 
-    def test_the_references_answer_reaches_the_team_file(self, project):
-        adopt.seed_team(project, {**ANSWERS, "references": "refero"})
+    def test_surface_is_the_only_design_setting(self, project):
+        """#123 removed `references`, and a stale row would read as answerable."""
+        adopt.seed_team(project, ANSWERS)
         body = (project / ".agentkit" / "team.md").read_text()
-        assert "| references | curated, refero |" in body
-        assert "`references` is `refero`" in body
+        assert "| surface | canvas, file, none |" in body
+        assert "references" not in body.split("## Design", 1)[1]
 
     def test_surface_is_seeded_unanswered(self, project):
         adopt.seed_team(project, ANSWERS)
@@ -1301,9 +1301,13 @@ class TestTheDesignSettings:
         assert "| surface | canvas, file, none |" in body
         assert "`surface` waits until somebody picks one." in body
 
-    def test_the_command_defaults_references_to_curated(self, template, project):
+    def test_the_command_names_no_references_flag(self, template, project):
+        """#123: the flag came out with the setting, and argparse would accept
+        a stale `--references` silently if it had stayed as a no-op."""
         adopt.main([str(project), "--write", "--pack", "none", "--template", str(template)])
-        assert "`references` is `curated`" in (project / ".agentkit" / "team.md").read_text()
+        assert "references" not in (project / ".agentkit" / "team.md").read_text().split("## Design", 1)[1]
+        with pytest.raises(SystemExit):
+            adopt.main([str(project), "--write", "--pack", "none", "--references", "refero", "--template", str(template)])
 
 
 def headings(body: str) -> list[str]:

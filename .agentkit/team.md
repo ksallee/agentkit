@@ -79,9 +79,8 @@ open the same deliverable and cite the same references.
 | Setting | Values | Meaning |
 |---|---|---|
 | surface | canvas, file, none | where a finished design lands |
-| references | curated, refero | where `design-references` gets its list |
 
-**agentkit: surface `none`, references `curated`.** This repository ships
+**agentkit: surface `none`.** This repository ships
 scaffolding and draws no screens, so `design-process` step 8 has nothing to
 publish and steps 1 to 7 apply to whatever a project draws with them. #25 is
 where the skills get exercised in a project that has screens.
@@ -89,10 +88,9 @@ where the skills get exercised in a project that has screens.
 `canvas` publishes the artboards with click-to-edit and PNG or PDF export,
 which needs a paid plan and stores the content on somebody else's
 infrastructure. `file` keeps them at a path in the repository, named after the
-value: `file, design/`. `none` publishes nothing. `curated` is the list in
-`design-references` and needs no account. `refero` adds a catalogue of design
-systems queried through a third-party MCP server, and it stays off until a
-project turns it on.
+value: `file, design/`. `none` publishes nothing. `design-references` holds
+the reference list itself and reaches no service, so there is no second row to
+answer. #123 removed one, and #131 is what would put it back.
 
 A skill reads this section as prose. No machine does, and no gate could: the
 one consumer is a person or an agent halfway through a design task, there is
