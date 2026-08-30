@@ -46,8 +46,8 @@ Those two rows are one precondition read twice, and the second carries the
 reason. Adoption replaces files and `git checkout` is the way back, so a
 repository with a commit has a recovery. A repository with none passes
 `rev-parse --git-dir` and has nothing to check out: undoing a write there means
-deleting the paths `adopt` printed, which is whole only while the directory was
-empty. Say which state the target is in, and where it has files and no commits,
+deleting the paths `adopt` printed. That recovers everything only while the
+directory was empty. Say which state the target is in, and where it has files and no commits,
 say what is in the tree before writing over it. `--phase` reads the same fact
 and defaults to `shaping` when there is no commit.
 
@@ -307,9 +307,8 @@ on every run, it carries `.agentkit/local.*`, and rule 19's forbidden list
 names that path because an ignore is a default somebody overrides.
 
 **The first commit cannot follow rules 10 to 13, and that is expected.** Rule
-11 branches off `origin/main`, which does not exist when this is the
-repository's first commit, and rule 10 wants an issue on a board the adoption
-is what makes usable. Commit straight to `main`. Rules 11, 13 and 16 are
+11 branches off `origin/main`, absent when this is the repository's first
+commit, and rule 10 wants an issue on a board the adoption makes usable. Commit straight to `main`. Rules 11, 13 and 16 are
 asserted by `bin/check-process` over a pull request, and a bootstrap commit has
 none. Where the project already has history the adoption is ordinary work, and
 it takes an issue and a branch like anything else.
