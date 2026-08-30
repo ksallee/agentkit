@@ -66,8 +66,11 @@ are cut; only interfaces stay.
 ## 6. Render and measure, every time
 
 Render every artboard with headless Chrome at its frame size and inspect it
-before saving. Clipping, an overflowing column and a stale capture are all
-caught this way and none of them by reading the markup.
+before saving. Clipping and an overflowing column are caught this way and
+neither by reading the markup. A stale capture is caught by neither, because
+one artboard on its own has nothing to compare against, and the shipped capture
+settles it with the `data-captured-digest` stamp on the root and the box
+comparison.
 
 **Read numbers out of the page instead of looking at it.** A claim about a
 screen is `getBoundingClientRect()` and `scrollWidth` on the elements it is
