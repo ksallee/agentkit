@@ -12,7 +12,7 @@ somebody's repository and not a directory this tool owns. The first run against
 a project that already carries these files replaces every one of them and moves
 the project's copy aside, which is a change worth reading before it happens.
 
-Three kinds of file, and only the first is ever replaced:
+Four kinds of file, and only the first is ever replaced whole:
 
 - `seeds.json` names what the template owns. Byte copies, hashed into
   `.agentkit/manifest.json`, replaced on every rerun. A path that leaves the
@@ -21,6 +21,8 @@ Three kinds of file, and only the first is ever replaced:
   rendered from the answers and seeded once.
 - `CLAUDE.md` and `.github/workflows/` are rendered from the answers and
   seeded once.
+- `.gitignore` gets a delimited block, rewritten on every run, with every line
+  outside it left alone.
 """
 
 from __future__ import annotations
@@ -58,9 +60,12 @@ TEAM_DIR = ".agentkit"
 # owns, so the manifest never claims its bytes and no rerun replaces them.
 ROUTER_REL = "CLAUDE.md"
 
-# What happened to a generated file. Neither one ever overwrites.
+# What happened to a generated file. `seeded` and `present` overwrite nothing.
+# `appended` adds the ignore block to a file the project already had, and it is
+# the one merge this tool performs.
 SEEDED = "seeded"
 PRESENT = "present"
+APPENDED = "appended"
 
 # Appended to a target whose bytes nobody here wrote. Measured 2026-08-29 in
 # `mac-hours/probes/claude_plugin.py`: a `SKILL.md.local` beside a real
@@ -838,6 +843,80 @@ def plan_workflows(project: Path) -> list[Outcome]:
 
 
 # ---------------------------------------------------------------------------
+# The ignore file, the one target where two files merge into one
+
+
+# Rendered and appended, absent from `seeds.json` for the reason the workflows
+# are: a tracked file is replaced whole on the next run, and here that would
+# take the project's own ignores with it. Git reads every line of a
+# `.gitignore` on its own, so a delimited block sits beside whatever is already
+# there and neither half changes what the other means. Every other file
+# collision is reported and left to a person.
+GITIGNORE_REL = ".gitignore"
+GITIGNORE_START = "# agentkit start"
+GITIGNORE_END = "# agentkit end"
+
+# Two lines, and a language pack owns anything further. `.agentkit/local.*` is
+# what rule 0 requires: it calls the personal layer gitignored, and a project
+# seeded without the line commits one person's taste to a shared branch.
+# `.claude/worktrees/` is harness state every project running agents produces,
+# and without it `git status` reports a dirty tree for as long as an agent is
+# working. `skills/` and `commands/` beside it are committed, so the ignore
+# names the one directory.
+GITIGNORE_LINES = (".agentkit/local.*", ".claude/worktrees/")
+
+
+def gitignore_block() -> str:
+    """The delimited block, which every rerun rewrites in place."""
+    return (
+        f"{GITIGNORE_START}\n"
+        "# Rewritten by the next adoption. Every line outside the block stays.\n"
+        + "".join(f"{line}\n" for line in GITIGNORE_LINES)
+        + f"{GITIGNORE_END}\n"
+    )
+
+
+def gitignore(existing: str | None) -> tuple[str | None, str]:
+    """What the file becomes and what happened, from what is there now.
+
+    A body of `None` means write nothing, and it comes back in two cases. The
+    block is already current, or the file opens a block and never closes it.
+    The end marker is where a rewrite stops, so a guess at it would delete
+    whatever the project wrote below.
+    """
+    block = gitignore_block()
+    if existing is None:
+        return block, SEEDED
+    start = existing.find(GITIGNORE_START)
+    if start < 0:
+        head = existing if existing.endswith("\n") or not existing else existing + "\n"
+        return head + "\n" + block, APPENDED
+    end = existing.find(GITIGNORE_END, start)
+    if end < 0:
+        return None, KEPT
+    after = end + len(GITIGNORE_END)
+    if existing[after : after + 1] == "\n":
+        after += 1
+    rebuilt = existing[:start] + block + existing[after:]
+    return (None, UNCHANGED) if rebuilt == existing else (rebuilt, UPDATED)
+
+
+def seed_gitignore(project: Path) -> Outcome:
+    """Write or refresh the block, and touch no line the project wrote."""
+    target = project / GITIGNORE_REL
+    body, status = gitignore(target.read_text() if target.is_file() else None)
+    if body is not None:
+        target.write_text(body)
+    return Outcome(GITIGNORE_REL, status)
+
+
+def plan_gitignore(project: Path) -> Outcome:
+    """What a write would do to the ignore file, writing nothing."""
+    target = project / GITIGNORE_REL
+    return Outcome(GITIGNORE_REL, gitignore(target.read_text() if target.is_file() else None)[1])
+
+
+# ---------------------------------------------------------------------------
 # The command
 
 
@@ -866,6 +945,7 @@ def report(
     team: list[Outcome],
     flows: list[Outcome],
     route: Outcome,
+    ignore: Outcome,
     dry: bool,
 ) -> None:
     """Name every file and both sides of every kept edit.
@@ -886,6 +966,16 @@ def report(
     print(f"\nworkflow {project / WORKFLOWS_DIR}")
     for row in flows:
         print(f"  {row.status:<9} {row.rel}")
+    print(f"\nignore   {project / GITIGNORE_REL}")
+    print(f"  {ignore.status:<9} {ignore.rel}")
+    if ignore.status == KEPT:
+        print(
+            f"\n{GITIGNORE_REL} opens an agentkit block with `{GITIGNORE_START}` and never\n"
+            f"closes it with `{GITIGNORE_END}`. Nothing was written: the end marker is\n"
+            "where a rewrite stops, and guessing at it would delete the project's own\n"
+            "ignores. Put the marker back or delete the opening one, then rerun."
+        )
+
     print(f"\nrouter   {project / ROUTER_REL}")
     print(f"  {route.status:<9} {route.rel}")
     if route.status == PRESENT:
@@ -979,12 +1069,14 @@ def main(argv: list[str] | None = None) -> int:
         team = seed_team(project, answers)
         flows = seed_workflows(project, answers)
         route = seed_router(args.template, project, answers)
+        ignore = seed_gitignore(project)
     else:
         files = plan(args.template, project)
         team = plan_team(project)
         flows = plan_workflows(project)
         route = plan_router(project)
-    report(project, files, team, flows, route, dry=not args.write)
+        ignore = plan_gitignore(project)
+    report(project, files, team, flows, route, ignore, dry=not args.write)
     return 0
 
 

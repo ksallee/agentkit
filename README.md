@@ -39,6 +39,11 @@ role guides, the rules that travel, and your own 1 to 8 held open. A project
 that already has a router keeps it untouched, and the `adopt` skill asks how you
 want the two reconciled.
 
+Your `.gitignore` gets a delimited block carrying `.agentkit/local.*` and
+`.claude/worktrees/`, and it is the one file a rerun edits in place. Git reads
+every line of it on its own, so the block is rewritten and every line outside it
+stays where you put it.
+
 The `adopt` skill asks the six answers the team layer and the router need. The
 pack is the one it refuses to guess, because a gate list naming a command you do
 not run makes rule 17 disagree with CI.
