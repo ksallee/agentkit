@@ -21,6 +21,24 @@ Private. Built for the way we work rather than for adoption by strangers.
 
 ## Adopting it
 
+**`/agentkit` is the entrypoint.** Clone this repository, start a session in
+the checkout, and type it with the request in your own words:
+
+```
+/agentkit set up a new project at ~/dev/thing
+/agentkit update the scaffolding here
+```
+
+The command reads the rest of the line as your sentence and says it back:
+which directory, and whether this is a first adoption or an update. Then it
+asks the five answers in one pass, runs the plan, and writes nothing until you
+say yes. Every adoption runs from a checkout of this repository, including a
+rerun, which is why `seeds.json` withholds that skill and that command from the
+projects it seeds.
+
+`bin/adopt` is the tool underneath, and calling it directly is for a case the
+skill does not cover:
+
 ```sh
 git clone git@github.com:ksallee/agentkit.git
 python3 agentkit/bin/adopt /path/to/your/project              # the plan
