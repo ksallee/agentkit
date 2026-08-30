@@ -243,6 +243,76 @@ class TestTheCaptureWaiver:
         assert status(done.stdout, "diff") == "FAIL"
 
 
+class TestAnAdvance:
+    """Rule 16's second opening, for a pull request that lands half an issue."""
+
+    def advance(self, **over) -> dict:
+        payload = pull(
+            body=(
+                "Advances #17. **Does not close it**: `WORKFLOW.md` is untouched.\n"
+                "\n## Remaining on #17\n\n`WORKFLOW.md`, 2,681 words.\n"
+            ),
+            branch="17-style-voice",
+            commits=[{"sha": "abc12345", "message": "STYLE.md states principles #17\n", "parents": 1}],
+            issues={"17": ["ksallee"]},
+        )
+        payload.update(over)
+        return payload
+
+    def test_the_pull_request_that_broke_rule_16_now_passes(self, tmp_path):
+        """PR #18, reduced to the fields the checks read."""
+        done = run(project(tmp_path, AGENTKIT_CONFIG), self.advance(), tmp_path)
+        assert done.returncode == 0, done.stdout
+        assert status(done.stdout, "body") == "pass"
+        assert status(done.stdout, "branch") == "pass"
+        assert status(done.stdout, "assignee") == "pass"
+
+    def test_an_advance_with_nothing_saying_what_is_left_fails(self, tmp_path):
+        payload = self.advance(body="Advances #17. Half of it is done.\n")
+        done = run(project(tmp_path, AGENTKIT_CONFIG), payload, tmp_path)
+        assert done.returncode == 1
+        assert status(done.stdout, "body") == "FAIL"
+        assert "Remaining" in done.stdout
+
+    def test_a_branch_naming_another_issue_than_the_advanced_one_fails(self, tmp_path):
+        payload = self.advance(branch="12-something-else", issues={"17": ["ksallee"], "12": ["ksallee"]})
+        done = run(project(tmp_path, AGENTKIT_CONFIG), payload, tmp_path)
+        assert done.returncode == 1
+        assert status(done.stdout, "branch") == "FAIL"
+
+    def test_an_unassigned_advanced_issue_fails(self, tmp_path):
+        """An issue that survives the merge is one somebody still owns."""
+        done = run(project(tmp_path, AGENTKIT_CONFIG), self.advance(issues={"17": []}), tmp_path)
+        assert done.returncode == 1
+        assert status(done.stdout, "assignee") == "FAIL"
+
+    def test_an_advance_below_the_first_line_is_not_an_opening(self, tmp_path):
+        payload = self.advance(body="Some context.\n\nAdvances #17\n\n## Remaining\n\nThe rest.\n")
+        done = run(project(tmp_path, AGENTKIT_CONFIG), payload, tmp_path)
+        assert done.returncode == 1
+        assert status(done.stdout, "body") == "FAIL"
+
+    def test_the_word_in_prose_puts_no_issue_in_front_of_the_branch_check(self, tmp_path):
+        """A closing body that mentions another issue keeps the branch it closes."""
+        payload = pull(body="Closes #10\n\nIt also advances #17, and #17 stays open.\n")
+        done = run(project(tmp_path, AGENTKIT_CONFIG), payload, tmp_path)
+        assert done.returncode == 0, done.stdout
+
+    def test_a_body_naming_no_issue_at_all_leaves_the_branch_check_nothing_to_read(self, tmp_path):
+        """Three failures, which is what #18 collected before rule 16 grew the form."""
+        payload = pull(body="A change that advances things.\n", branch="17-style-voice")
+        done = run(project(tmp_path, AGENTKIT_CONFIG), payload, tmp_path)
+        assert done.returncode == 1
+        for name in ("body", "branch", "assignee"):
+            assert status(done.stdout, name) == "FAIL"
+        assert "the body names nothing" in done.stdout
+
+    def test_an_advance_still_answers_for_its_labels(self, tmp_path):
+        done = run(project(tmp_path, AGENTKIT_CONFIG), self.advance(labels=["bug"]), tmp_path)
+        assert done.returncode == 1
+        assert status(done.stdout, "labels") == "FAIL"
+
+
 class TestWhatAProjectConfigures:
     def test_two_area_labels_fail(self, tmp_path):
         payload = pull(labels=["area: rules", "area: mechanism", "bug"])
