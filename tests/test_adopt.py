@@ -893,3 +893,87 @@ class TestTheIgnoreFile:
         assert done.returncode == 0
         assert ".agentkit/local.*" in done.stdout
         assert ".claude/worktrees/" in done.stdout
+
+
+class TestAPersonalSkillOfASeededName:
+    """The collision `adopt` reports and does not act on (#50).
+
+    Every test points `CLAUDE_CONFIG_DIR` at a directory under `tmp_path`, so
+    the personal root under test is a fixture and the real `~/.claude/skills/`
+    is never read and never written.
+    """
+
+    def personal(self, tmp_path, monkeypatch, *, directory=None, declared=None):
+        """A personal skills root holding one skill, and the path to it."""
+        home = tmp_path / "home"
+        root = home / "skills"
+        if directory:
+            skill = root / directory
+            skill.mkdir(parents=True)
+            (skill / "SKILL.md").write_text(
+                f"---\nname: {declared or directory}\ndescription: A personal copy.\n---\nHello.\n"
+            )
+        else:
+            root.mkdir(parents=True)
+        monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(home))
+        return root
+
+    def test_a_personal_skill_of_a_seeded_name_is_named(self, tmp_path, monkeypatch):
+        root = self.personal(tmp_path, monkeypatch, directory="demo")
+        assert adopt.personal_collisions(FIXTURE) == (root, ["demo"])
+
+    def test_an_empty_personal_root_collides_with_nothing(self, tmp_path, monkeypatch):
+        self.personal(tmp_path, monkeypatch)
+        assert adopt.personal_collisions(FIXTURE)[1] == []
+
+    def test_a_personal_skill_of_another_name_is_not_a_collision(self, tmp_path, monkeypatch):
+        self.personal(tmp_path, monkeypatch, directory="triage")
+        assert adopt.personal_collisions(FIXTURE)[1] == []
+
+    def test_the_name_a_personal_skill_declares_is_the_one_that_collides(self, tmp_path, monkeypatch):
+        """A `name:` in the frontmatter is what a session types, whatever the directory is called."""
+        self.personal(tmp_path, monkeypatch, directory="mine", declared="demo")
+        assert adopt.personal_collisions(FIXTURE)[1] == ["demo"]
+
+    def test_a_skill_this_template_does_not_seed_is_not_a_collision(self, tmp_path, monkeypatch, template):
+        self.personal(tmp_path, monkeypatch, directory="demo")
+        (template / "seeds.json").write_text(json.dumps({"tracked": [STYLE]}))
+        assert adopt.personal_collisions(template)[1] == []
+
+    def test_the_personal_root_is_read_and_never_written(self, tmp_path, monkeypatch, template, project):
+        root = self.personal(tmp_path, monkeypatch, directory="demo")
+        before = sorted(p.relative_to(root).as_posix() for p in root.rglob("*"))
+        adopt.main([str(project), "--write", "--pack", "none", "--template", str(template)])
+        assert sorted(p.relative_to(root).as_posix() for p in root.rglob("*")) == before
+
+    def test_the_report_names_the_collision_and_the_run_continues(
+        self, tmp_path, monkeypatch, template, project, capsys
+    ):
+        self.personal(tmp_path, monkeypatch, directory="demo")
+        assert adopt.main([str(project), "--write", "--pack", "none", "--template", str(template)]) == 0
+        out = capsys.readouterr().out
+        assert "shadowed  demo" in out
+        assert "unreachable by name on this machine" in out
+        assert (project / SKILL).is_file()
+
+    def test_the_report_says_so_when_there_is_no_collision(self, tmp_path, monkeypatch, template, project, capsys):
+        self.personal(tmp_path, monkeypatch)
+        adopt.main([str(project), "--template", str(template)])
+        out = capsys.readouterr().out
+        assert "no name seeded here is a personal skill" in out
+        assert "shadowed" not in out
+
+    def test_a_plan_reports_the_collision_too(self, tmp_path, monkeypatch, template, project, capsys):
+        """The plan is where somebody reads what a write would do, so the warning is there."""
+        self.personal(tmp_path, monkeypatch, directory="demo")
+        adopt.main([str(project), "--template", str(template)])
+        assert "shadowed  demo" in capsys.readouterr().out
+
+    def test_a_probe_that_will_not_load_says_so_instead_of_reporting_none(
+        self, tmp_path, monkeypatch, template, project, capsys
+    ):
+        self.personal(tmp_path, monkeypatch, directory="demo")
+        monkeypatch.setattr(adopt, "PROBE_REL", "probes/gone.py")
+        assert adopt.personal_collisions(template) == (None, [])
+        adopt.main([str(project), "--template", str(template)])
+        assert "did not load, so no personal skill was listed" in capsys.readouterr().out
