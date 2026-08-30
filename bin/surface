@@ -1,0 +1,172 @@
+#!/usr/bin/env python3
+"""The registry of files in this project that capture a stated preference.
+
+    bin/surface list                    # every row, and any file that has gone
+    bin/surface record style docs/development/STYLE.md
+    bin/surface list --root ../other    # a project whose registry is elsewhere
+
+Rule 21 sends a stated preference to the file that reads it next. `wrap-up`
+writes those files and records each one here, so a later session can ask which
+files hold a preference without reading all of them, and so a surface this
+project grew is routed to without editing the skill.
+
+The registry holds no decision. Each one lives in the file a row points at, so
+a lost registry costs the list alone. It is gitignored for that reason: two
+branches that each recorded a surface would conflict on merge, over
+bookkeeping.
+
+One registry per repository, found through git, so a worktree and the checkout
+it was made from write the same file. `wrap-up` deletes worktrees, and a
+registry inside one goes with it.
+
+Standard library only, under a plain `python3` shebang, so it runs on the
+interpreter macOS ships before a project installs anything.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+REGISTRY_REL = ".agentkit/local.surfaces.json"
+
+VERSION = 1
+
+# A slug, so one surface has one row. `STYLE.md`, `style` and `docs/STYLE`
+# would otherwise be three rows for one file, and the list stops answering what
+# has been written.
+NAME = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
+
+NAME_COLUMN = 16
+
+
+def repository_root(start: Path) -> Path:
+    """The checkout a worktree belongs to, or the directory this script sits in.
+
+    `--git-common-dir` resolves to the main checkout's `.git` from inside a
+    linked worktree, where `--show-toplevel` gives the worktree itself.
+    """
+    try:
+        done = subprocess.run(
+            ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+            capture_output=True,
+            text=True,
+            cwd=start,
+        )
+    except OSError:
+        return start
+    if done.returncode != 0 or not done.stdout.strip():
+        return start
+    return Path(done.stdout.strip()).parent
+
+
+def read(registry: Path) -> dict:
+    if not registry.exists():
+        return {"version": VERSION, "surfaces": {}}
+    try:
+        loaded = json.loads(registry.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        # Blanking a file it cannot parse would drop rows silently. The repair
+        # is one delete, and the person doing it should know it happened.
+        sys.exit(f"{registry} is unreadable: {exc}")
+    if not isinstance(loaded, dict) or not isinstance(loaded.get("surfaces"), dict):
+        sys.exit(f"{registry} is not a surface registry.")
+    return {"version": loaded.get("version", VERSION), "surfaces": loaded["surfaces"]}
+
+
+def write(registry: Path, state: dict) -> None:
+    registry.parent.mkdir(parents=True, exist_ok=True)
+    tmp = registry.with_suffix(".tmp")
+    tmp.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(tmp, registry)
+
+
+def stored(root: Path, given: str) -> str:
+    """Relative to the root when the surface is inside it, absolute when not.
+
+    A relative path keeps the registry readable in a second clone. The personal
+    layer may sit outside the checkout entirely (#15), so an outside path is
+    kept whole.
+    """
+    target = Path(given)
+    absolute = target if target.is_absolute() else (root / target)
+    try:
+        return str(absolute.resolve().relative_to(root.resolve()))
+    except ValueError:
+        return str(absolute.resolve())
+
+
+def resolve(root: Path, path: str) -> Path:
+    target = Path(path)
+    return target if target.is_absolute() else root / target
+
+
+def do_record(root: Path, name: str, path: str) -> int:
+    if not NAME.match(name):
+        sys.exit(f"{name!r} is not a surface name. Lower case, digits, dot, dash, underscore.")
+    if not resolve(root, path).exists():
+        # A row pointing at nothing makes the whole list untrustworthy, and the
+        # list is the only thing this file is for.
+        sys.exit(f"No file at {resolve(root, path)}. Write the surface, then record it.")
+    registry = root / REGISTRY_REL
+    state = read(registry)
+    row = {
+        "path": stored(root, path),
+        "written_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+    state["surfaces"][name] = row
+    write(registry, state)
+    print(f"{name}  {row['written_at']}  {row['path']}")
+    return 0
+
+
+def do_list(root: Path) -> int:
+    registry = root / REGISTRY_REL
+    state = read(registry)
+    surfaces = state["surfaces"]
+    print(f"registry  {registry}")
+    if not surfaces:
+        print("\nNo surfaces recorded. Rule 21 has nothing written down here yet.")
+        return 0
+    print(f"\nsurfaces  {len(surfaces)}")
+    width = max(NAME_COLUMN, *(len(n) for n in surfaces))
+    for name in sorted(surfaces):
+        row = surfaces[name]
+        path = row.get("path", "")
+        gone = "" if path and resolve(root, path).exists() else "  MISSING"
+        print(f"  {name:<{width}}  {row.get('written_at', '?')}  {path}{gone}")
+    return 0
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description="The surfaces that capture a preference, per rule 21.")
+    ap.add_argument(
+        "--root",
+        default=None,
+        help="Project root holding " + REGISTRY_REL + ". Default: this repository.",
+    )
+    sub = ap.add_subparsers(dest="command", required=True)
+    sub.add_parser("list", help="Print every recorded surface.")
+    recorder = sub.add_parser("record", help="Record that a surface was written.")
+    recorder.add_argument("name", help="A slug naming the surface, stable across sessions.")
+    recorder.add_argument("path", help="The file, relative to the project root or absolute.")
+    args = ap.parse_args()
+
+    here = Path(__file__).resolve().parent.parent
+    root = Path(args.root).resolve() if args.root else repository_root(here)
+    if not root.is_dir():
+        sys.exit(f"{root} is not a directory.")
+
+    if args.command == "record":
+        return do_record(root, args.name, args.path)
+    return do_list(root)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
