@@ -10,7 +10,7 @@ because every one of them has happened.
 
 ## What the project supplies
 
-This skill is the method. Five inputs are the project's.
+This skill is the method. Six inputs are the project's.
 
 | Input | Where it lives | Absent |
 |---|---|---|
@@ -18,7 +18,8 @@ This skill is the method. Five inputs are the project's.
 | The person the work is delivered to | `.agentkit/local.md` | Nobody has been asked yet (rule 0) |
 | Where a finished design lands | `.agentkit/team.md`, `## Design`, `surface` | Ask. Step 8 has three answers and no default |
 | Which reference list is in play | `.agentkit/team.md`, `## Design`, `references` | `curated`, the `design-references` file |
-| The artboard generator and the capture | the project's design directory | Steps 3 and 6 say what each needs |
+| The capture, and the screens it opens | `design/capture.py` or `design/capture.mjs`, seeded by `adopt`, and `design/screens.json` | Adopt the scaffolding. Step 6 says what a capture has to do |
+| The artboard generator | the project's design directory | Step 3 says what it needs |
 
 Report an absent input and ask. A guessed constraint reads as a settled one on
 the artboard, and whoever never agreed to it finds out at review.

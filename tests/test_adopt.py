@@ -145,6 +145,86 @@ class TestTheTemplatesOwnTools:
         assert "template_only" in declared["note"]
 
 
+class TestThePacksOwnDriver:
+    """`per_pack`, the third list: one file per language pack, chosen at adoption.
+
+    A capture reads computed styles out of a real browser, so it needs a driver,
+    and the driver a project can install is the one its pack already declares.
+    The template holds both and a project receives one.
+    """
+
+    @staticmethod
+    def declare(template, tracked, per_pack, pack):
+        (template / "seeds.json").write_text(json.dumps({"tracked": tracked, "per_pack": per_pack}))
+        return {rel for rel, _ in adopt.seeds(template, pack)}
+
+    def test_only_the_chosen_packs_file_seeds(self, template):
+        per_pack = {"python": [STYLE], "none": []}
+        assert self.declare(template, [".claude/skills/"], per_pack, "python") == {STYLE, SKILL, SKILL.replace("SKILL.md", "reference.md")}
+
+    def test_another_packs_file_is_withheld_from_the_expansion(self, template):
+        per_pack = {"python": [STYLE], "none": []}
+        seeded = self.declare(template, [".claude/skills/", "docs/development/"], per_pack, "none")
+        assert STYLE not in seeded
+
+    def test_a_pack_the_list_does_not_name_stops_the_run(self, template):
+        with pytest.raises(SystemExit) as raised:
+            self.declare(template, [STYLE], {"python": []}, "typescript")
+        assert "typescript" in str(raised.value)
+
+    def test_an_absent_list_leaves_every_pack_alone(self, template):
+        (template / "seeds.json").write_text(json.dumps({"tracked": [STYLE]}))
+        assert {rel for rel, _ in adopt.seeds(template, "typescript")} == {STYLE}
+
+    def test_every_pack_this_repository_declares_has_a_driver_list(self):
+        """A pack with no entry raises at adoption, which is a defect nobody sees until then."""
+        declared = json.loads((ROOT / "seeds.json").read_text())
+        assert set(declared["per_pack"]) == set(adopt.PACKS)
+
+    def test_this_repository_seeds_one_driver_per_pack(self):
+        drivers = {"design/capture.py", "design/capture.mjs"}
+        for pack in adopt.PACKS:
+            seeded = {rel for rel, _ in adopt.seeds(ROOT, pack)} & drivers
+            assert len(seeded) == (0 if pack == "none" else 1), pack
+
+    def test_the_contract_and_the_screen_list_seed_to_every_pack(self):
+        for pack in adopt.PACKS:
+            seeded = {rel for rel, _ in adopt.seeds(ROOT, pack)}
+            assert {"design/capture.js", "design/screens.json"} <= seeded
+
+    def test_the_note_explains_the_list(self):
+        declared = json.loads((ROOT / "seeds.json").read_text())
+        assert "per_pack" in declared["note"]
+
+
+class TestTheRecordedPack:
+    """The manifest carries the pack, because a rerun that guessed it seeds the wrong driver."""
+
+    def test_a_write_records_it(self, template, project):
+        adopt.write(template, project, "python")
+        assert adopt.recorded_pack(project) == "python"
+
+    def test_a_project_with_no_manifest_records_nothing(self, project):
+        assert adopt.recorded_pack(project) == ""
+
+    def test_a_rerun_naming_no_pack_keeps_the_recorded_one(self, template, project, capsys):
+        adopt.main([str(project), "--write", "--pack", "python", "--template", str(template)])
+        capsys.readouterr()
+        adopt.main([str(project), "--write", "--template", str(template)])
+        assert adopt.recorded_pack(project) == "python"
+
+    def test_a_project_adopted_before_the_record_is_asked_again(self, template, project, capsys):
+        """The gate list and the workflow are already there, and the driver is not."""
+        adopt.main([str(project), "--write", "--pack", "python", "--template", str(template)])
+        manifest = project / adopt.MANIFEST_REL
+        body = json.loads(manifest.read_text())
+        del body["pack"]
+        manifest.write_text(json.dumps(body))
+        capsys.readouterr()
+        assert adopt.main([str(project), "--write", "--template", str(template)]) == 2
+        assert "--pack is required" in capsys.readouterr().err
+
+
 class TestAWithheldPathAlreadyInAProject:
     """The rerun for a project adopted before the exclusion landed.
 
