@@ -19,9 +19,11 @@ The agent merges the pull requests it opens. Two conditions come with that:
 - **The operator QAs after the fact.** A defect found then is a new issue, and
   the branch that would have waited for a review is already off the board.
 
-**A second reader reopens it.** This holds while the operator is the only
-person working here. The moment somebody else is reviewing, rule 18's default
-applies and this line gets asked again instead of inherited by silence.
+**A second reader reopens it, and it was reopened.** @salleedesign got write
+access on 2026-08-30 and the line was asked again the same hour. The permission
+holds for now: somebody who has read nothing is not yet reviewing. It gets
+asked a third time at his first review of a pull request, which is the event
+this clause was written for.
 
 Settled 2026-08-29 in #6, which carries what the alternative was.
 
@@ -36,8 +38,9 @@ the `area:` labels on the board.
 | Mechanism: `bin/`, `seeds.json`, the manifest | @ksallee |
 | Skills: what a project gets under `.claude/` | @ksallee |
 
-One person owns every area, so no row settles a disagreement today. A second
-owner is one edit to the table.
+One person owns every area, so no row settles a disagreement today.
+@salleedesign has write access and owns none of them. A second owner is one
+edit to the table, made when he takes an area rather than when he arrives.
 
 ## Conventions this project settled
 
