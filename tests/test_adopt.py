@@ -197,6 +197,31 @@ class TestThePacksOwnDriver:
         assert "per_pack" in declared["note"]
 
 
+class TestTheSeededProbe:
+    """`probes/skill_sources.py`, the one file under `probes/` named on its own line.
+
+    It reads whatever `.claude/skills/` holds in the repository it runs in, so
+    a project that took the skills can check the URLs they cite. Every other
+    probe here reads an interface a seeded project may never have, and rule 9
+    asks a project to drop a rule it has no interface for.
+    """
+
+    def test_the_url_probe_seeds(self):
+        assert "probes/skill_sources.py" in {rel for rel, _ in adopt.seeds(ROOT)}
+
+    def test_no_other_file_under_probes_seeds(self):
+        """A `/` typed onto that entry would carry five probes nobody asked for."""
+        others = {p.relative_to(ROOT).as_posix() for p in (ROOT / "probes").iterdir() if p.is_file()}
+        others -= {"probes/skill_sources.py"}
+        assert others, "probes/ holds nothing else, so this asserts nothing"
+        for pack in adopt.PACKS:
+            assert not others & {rel for rel, _ in adopt.seeds(ROOT, pack)}, pack
+
+    def test_the_note_explains_the_one_entry(self):
+        declared = json.loads((ROOT / "seeds.json").read_text())
+        assert "probes/skill_sources.py" in declared["note"]
+
+
 class TestTheRecordedPack:
     """The manifest carries the pack, because a rerun that guessed it seeds the wrong driver."""
 
