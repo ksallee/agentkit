@@ -1,0 +1,42 @@
+# The two process checks that read this project's own facts. `bin/check-process`
+# is the only thing that reads this file, and the other five checks it runs
+# need nothing from here.
+#
+# A separate file from `gates.toml` because #3 settled that a gate declaration
+# carries a name, a command and an optional `cwd`, that nothing else declares a
+# gate, and that `bin/verify` is its only reader. A label taxonomy in that file
+# would give it a second reader and a second kind of content, and the next
+# person reading `gates.toml` would have to work out which half rule 17 means.
+#
+# This file is absent in a project that has configured neither check, and
+# `bin/check-process` reports both as `absent` on every pull request rather
+# than passing them. A rule nobody configured that reports `pass` is the
+# decoration this issue was filed to avoid.
+#
+# `adopt` does not seed this file. The area prefix is a question adopt never
+# asks, and a seeded taxonomy would be a guess at somebody else's labels.
+
+[labels]
+# Rule 15: exactly one label carrying this prefix, plus at least one kind.
+area = "area: "
+
+# A third axis. A label carrying one of these prefixes never counts as the
+# kind, and `effort:` is the axis this repository added first.
+#
+# A kind is any label carrying neither the area prefix nor an axis prefix, so
+# `bug`, `enhancement`, `documentation` and `accessibility` all qualify without
+# being listed. The taxonomy grows without an edit here, which is what rule 15
+# means by reading the list rather than remembering it.
+axes = ["effort: "]
+
+[diff]
+# Rule 19: paths that never appear in a diff, matched against every changed
+# file. Each pattern is a glob, matched from the right, so `*.db` catches a
+# database anywhere in the tree.
+#
+# This repository captures nothing about anybody. It holds one personal file,
+# `.agentkit/local.md`, which rule 0 assigns to the personal layer and
+# `.gitignore` already covers. The pattern is here because an ignore is a
+# default somebody overrides with `git add -f`, and a pushed object stays
+# reachable through the pull request refs after the branch is deleted.
+forbidden = [".agentkit/local.*"]

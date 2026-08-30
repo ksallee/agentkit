@@ -32,5 +32,6 @@ jobs:
       # `bin/check-style` needs python3 alone and no project, which is why it
       # runs first and why it works before uv has resolved anything.
       - run: bin/verify style
+      - run: bin/verify probes
       - run: bin/verify lint
       - run: bin/verify tests
