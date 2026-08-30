@@ -13,7 +13,7 @@ Two files come out of a shaping pass, and they hold different halves.
 | `CLAUDE.md`, the project's own rules | the settled constraint, one paragraph each, no history | every agent, every turn |
 
 **Only the operator answers.** A constraint is a decision somebody makes, and a
-codebase is what got built before the decision. Reading the source and writing
+codebase is what got built before it. Reading the source and writing
 an answer produces a rule nobody agreed to, which every session after it treats
 as settled. Ask, take "we have not decided" as an answer, and file it as open.
 
@@ -81,7 +81,7 @@ A number, once written, points at one constraint for the life of the project.
 - **Assign the lowest number this project has never used.** Settle three
   constraints and they are 1, 2 and 3.
 - **Within one pass, number them in the order the questions were asked.** Four
-  answers arrive at once, and the table above is what breaks the tie, so two
+  answers arrive at once, and the table above breaks the tie, so two
   people running the same pass reach the same numbers.
 - **A reversed constraint keeps its number.** The text is rewritten in place. A
   citation in a commit message from month one still lands on the rule it meant,
@@ -211,9 +211,9 @@ rules to a file that already has one.
 
 | Excuse | Reality |
 |---|---|
-| "The codebase answered question two." | It answered what somebody built. A constraint is what they decided, and nobody has been asked. |
+| "The codebase answered question two." | It answered what somebody built. A constraint is their decision, and nobody has been asked. |
 | "I wrote the router section and skipped the issue." | The reasoning is then in a transcript, and the first reversal has nothing to reverse against. |
-| "Nothing was settled, so I wrote nothing." | The issue is the output of that pass. Six open questions with costs on them is what rule 22 asks for. |
+| "Nothing was settled, so I wrote nothing." | The issue is the output of that pass. Rule 22 asks for six open questions with costs on them. |
 | "All eight, in the first session." | Eight constraints settled before anything exists means most of them were guessed. Settle what is real, leave the rest open. |
 | "The operator said probably." | A probably is an open question with a name on it. It stays in the issue and out of the router. |
 | "It matters to me, so it is rule 4." | Rule 0 has a layer for that. `.agentkit/local.md` for one person, `.agentkit/team.md` for two. |
