@@ -38,6 +38,11 @@ to close. Labels, diff and style still apply.
 checks the way a closed one does, and the body check asks for the `## Remaining`
 heading as well.
 
+A fenced code block in the body escapes the style check. Rule 17 asks for a
+gate's output in the body, and `bin/check-style` reports the pattern it caught,
+so the evidence cannot be pasted otherwise. Prose outside a fence is read, and
+so is every commit subject.
+
 Rule 18 is absent on purpose. The permission to merge lives in
 `.agentkit/team.md` as a sentence, and a machine cannot tell an approved merge
 from an impatient one.
@@ -96,6 +101,11 @@ SUBJECT_ISSUE = re.compile(r"#(\d+)\s*$")
 # Rule 13 says no type prefix. Conventional Commits is the habit it rules out,
 # and its vocabulary is fixed enough to match.
 TYPE_PREFIX = re.compile(r"^(?:feat|fix|chore|docs|refactor|test|style|build|ci|perf)(?:\([^)]*\))?!?:", re.I)
+
+# A fenced code block opens and closes on three or more backticks or tildes,
+# indented at most three spaces. The opener may carry an info string, a closer
+# may not, and a closer is at least as long as the opener it answers.
+FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
 
 # A sha of nothing. A push event carries it as `before` when a branch is
 # created and as `after` when one is deleted.
@@ -397,9 +407,40 @@ def style_rules() -> tuple:
     return module.RULES
 
 
+def prose(body: str) -> list[tuple[int, str]]:
+    """The body's lines, numbered from 1, with every fenced code block dropped.
+
+    Rule 17 asks for a gate's output in the pull request body, and six of the
+    seven style rules report the pattern they caught. Pasting what
+    `bin/check-style` printed then fails rule 24, so the required evidence
+    cannot be given. A fence marks text that was pasted rather than written,
+    which is the category being exempted, and prose outside one keeps its gate
+    (#151).
+
+    A fence that never closes runs to the end of the body, the way CommonMark
+    reads it.
+    """
+    kept: list[tuple[int, str]] = []
+    opener = ""
+    for n, line in enumerate((body or "").splitlines(), 1):
+        found = FENCE.match(line)
+        if not opener:
+            if found:
+                opener = found.group(1)
+            else:
+                kept.append((n, line))
+        elif found and found.group(1)[0] == opener[0] and len(found.group(1)) >= len(opener) and not found.group(2).strip():
+            opener = ""
+    return kept
+
+
 def check_style(pull: Pull) -> Check:
-    """Rule 24 over the two surfaces a file checker never sees."""
-    lines = [("body", n, line) for n, line in enumerate((pull.body or "").splitlines(), 1)]
+    """Rule 24 over the two surfaces a file checker never sees.
+
+    Only the body skips fences. A commit subject is one line and nothing is
+    pasted into one, so it is read whole.
+    """
+    lines = [("body", n, line) for n, line in prose(pull.body)]
     lines += [(c.sha[:8] or "subject", 1, c.subject) for c in pull.commits if not c.merge]
     problems = []
     for where, n, line in lines:
