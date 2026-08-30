@@ -133,9 +133,10 @@ the only copy is one an account can lose.
 ## 9. Write the decision where it is read next
 
 A design call goes into the design guide as a proposal with its reasoning. One
-person's preference goes into `.agentkit/local.md`. A fact about CSS or motion
-goes into `css-now` or `motion`, where those numbers live. A decision that
-lives only in a transcript is repeated forever.
+person's preference goes into `.agentkit/local.md`. A fact about motion goes
+into `motion`, where those numbers live, and a CSS fact the Chrome guides leave
+out goes into `design-references`. A decision that lives only in a transcript is
+repeated forever.
 
 ## Tools worth reaching for
 

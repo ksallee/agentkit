@@ -1,6 +1,6 @@
 ---
 name: design-references
-description: Who to learn from for a dense, keyboard-first, quiet interface: designers, design engineers and products, with what each is known for and where to look. Use when a design task needs a reference for a component, a motion, a layout or a tone, before drawing from memory. Links checked 2026-08-28.
+description: Who to learn from for a dense, keyboard-first, quiet interface: designers, design engineers and products, with what each is known for and where to look, and where the current CSS guidance is searched. Use when a design task needs a reference for a component, a motion, a layout or a tone, before drawing from memory, and before writing CSS.
 ---
 
 # Design references
@@ -64,6 +64,37 @@ genre keeps the people, who write about craft, and builds its own product list.
 - **Notion Calendar**, `notion.com/product/calendar`. Time as columns, one
   weight of grey, colour only on events.
 - **Family**, `family.co`. The most animated of the set; study, do not copy.
+
+## Standing guidance
+
+- **`GoogleChrome/modern-web-guidance`**, run as `npx -y
+  modern-web-guidance@latest search "<query>"`. 140 guides on CSS, layout,
+  forms, motion and performance, first-party to Chrome. Each feature carries
+  its own Baseline date, generated from `web-features`, plus per-browser first
+  support. The source repository grades 132
+  of its 202 guides with a `grader.ts` that drives a headless render. Search it
+  before writing CSS.
+
+  Nothing is pinned. The guidance is fetched on every call, and the
+  `--skill-version` flag its `SKILL.md` passes warns on stderr when the skill
+  is older than the package that call just fetched.
+
+### Nine gotchas the guides leave out
+
+The guides cover all nine features, at equal or greater depth on everything
+else. Each row is the clause they leave out.
+
+| Feature | The gotcha |
+|---|---|
+| `@layer` | Unlayered styles beat every layer, and `!important` inverts the layer order |
+| Nesting | `&` carries the specificity of `:is()` over the nesting list. Sass substitutes text, so the two disagree |
+| `color-mix()` | It cannot raise opacity. Relative colour syntax can |
+| `linear()` easing | Two stops minimum, ascending |
+| `@scope` | Inherited properties leak past the scope limit, and `&` specificity differs by engine |
+| Relative colour syntax | Channels are numbers: `calc(l + 20)`, never `+ 20%` |
+| `@property` | The initial value must be computationally independent: `10px`, never `3em` |
+| `<dialog>` | `tabindex` never goes on the dialog itself |
+| Same-document view transitions | The framework navigation hook wraps `document.startViewTransition`, resolves inside the callback, then awaits the navigation. SvelteKit's `onNavigate` is the pattern its docs give |
 
 ## The project's own references
 
