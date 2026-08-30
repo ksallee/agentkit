@@ -236,7 +236,10 @@ you saw. For anything numeric, say which number you checked by hand and against
 what.
 
 Merge with **squash**, so `main` stays linear at one commit per issue, and
-delete the branch.
+delete the branch. **Run the merge from the primary clone**, because
+`gh pr merge --delete-branch` does local git work once the server side is done
+and that work assumes a plain checkout. From inside a worktree it fails after
+the merge has already landed.
 
 ### 17. Every gate declared in `.agentkit/gates.toml` passes before you say you are done
 
@@ -376,3 +379,26 @@ merging `main` in resolves cleanly against the squashed equivalent.
 **Wait for the checks to finish before merging.** `gh pr checks` prints nothing
 on a pull request whose runs have not been created yet, so a count of zero
 failures is also what a pull request with no checks at all looks like.
+
+**`gh pr merge` exits non-zero after the merge has landed.** Run from a
+worktree it fails on the local step that follows the merge, in one of two
+places depending on which branch is where:
+
+```
+fatal: 'main' is already used by worktree at /Users/you/dev/project
+failed to delete local branch 12-slug: cannot delete branch '12-slug' used by
+worktree at /Users/you/dev/project/.claude/worktrees/12-slug
+```
+
+Neither says what happened to the merge, and the merge succeeded. Ask the
+server rather than the exit code, and finish the cleanup by hand:
+
+```bash
+gh pr view <n> --json state        # MERGED, whatever the exit code said
+git push origin --delete <branch>  # --delete-branch never got this far
+```
+
+Rule 16 says to merge from the primary clone, which avoids both. This is here
+for the reader who already has the error in front of them. Three actors hit it
+in one session on 2026-08-30, and each diagnosed it from scratch, because the
+error text appeared nowhere in the repository.
