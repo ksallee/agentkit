@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import subprocess
 import sys
@@ -838,6 +839,67 @@ def plan_workflows(project: Path) -> list[Outcome]:
 
 
 # ---------------------------------------------------------------------------
+# The personal skills root, which neither the project nor this repository owns
+
+
+# A personal skill and a project skill of one name both load, and a typed
+# `/name` reaches the personal one. Measured 2026-08-30 on Claude Code 2.1.251,
+# recorded on #40: the loaded count went 16 to 17 with no `Skipping duplicate
+# skill` line, and `claude -p "/pick-work"` returned the personal copy's
+# marker. So a project seeding a name its reader already has ships a skill that
+# is unreachable by name on that machine, and the operator running `bin/adopt`
+# is the only person who can see both directories.
+#
+# The run names the collision and continues, which is the standing `kept` has.
+# `~/.claude/skills/` is outside the project and outside this repository, and
+# reading the directory names is the whole of what happens to it.
+SKILLS_REL = ".claude/skills"
+
+# `probes/skill_precedence.py` resolves the loader's roots, honours
+# `CLAUDE_CONFIG_DIR`, and reads the `name:` a `SKILL.md` declares over its
+# directory name. Reading it from `TEMPLATE` rather than from `--template`
+# because the probe is this repository's own tool and no project is seeded with
+# it. A second copy of that logic here is the copy that drifts when the loader
+# changes.
+PROBE_REL = "probes/skill_precedence.py"
+
+
+def _probe() -> object | None:
+    """`probes/skill_precedence.py` as a module, or `None` when it will not load."""
+    path = TEMPLATE / PROBE_REL
+    if not path.is_file():
+        return None
+    try:
+        spec = importlib.util.spec_from_file_location("skill_precedence", path)
+        if spec is None or spec.loader is None:
+            return None
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    except Exception:
+        return None
+    return module
+
+
+def personal_collisions(template: Path) -> tuple[Path | None, list[str]]:
+    """The personal skills root, and every name it holds that this template seeds.
+
+    A root of `None` means the probe did not load, so nothing was listed and
+    the run says so instead of claiming there is no collision.
+    """
+    probe = _probe()
+    if probe is None:
+        return None, []
+    tracked = {rel for rel, _ in seeds(template)}
+    ours = {
+        name
+        for name, skill_md in probe.skills_in(template / SKILLS_REL)
+        if skill_md.relative_to(template).as_posix() in tracked
+    }
+    theirs = {name for name, _ in probe.skills_in(probe.user_skills())}
+    return probe.user_skills(), sorted(ours & theirs)
+
+
+# ---------------------------------------------------------------------------
 # The command
 
 
@@ -866,6 +928,7 @@ def report(
     team: list[Outcome],
     flows: list[Outcome],
     route: Outcome,
+    skills: tuple[Path | None, list[str]],
     dry: bool,
 ) -> None:
     """Name every file and both sides of every kept edit.
@@ -886,6 +949,16 @@ def report(
     print(f"\nworkflow {project / WORKFLOWS_DIR}")
     for row in flows:
         print(f"  {row.status:<9} {row.rel}")
+    root, shadowed = skills
+    if root is None:
+        print(f"\nskills   {PROBE_REL} did not load, so no personal skill was listed.")
+    else:
+        print(f"\nskills   {root}")
+        for name in shadowed:
+            print(f"  shadowed  {name}")
+        if not shadowed:
+            print("  no name seeded here is a personal skill on this machine")
+
     print(f"\nrouter   {project / ROUTER_REL}")
     print(f"  {route.status:<9} {route.rel}")
     if route.status == PRESENT:
@@ -897,6 +970,16 @@ def report(
             "guides, and a pointer to docs/development/WORKFLOW.md for 10 to 23.\n"
             "How the two files end up as one is a question the `adopt` skill asks\n"
             "and the operator answers, per project."
+        )
+
+    if shadowed:
+        print(
+            f"\n{len(shadowed)} skill(s) seeded here share a name with a personal skill in\n"
+            f"{root}\n"
+            "Both copies load, and a typed name reaches the personal one, so the copy this\n"
+            "run writes is unreachable by name on this machine. Measured 2026-08-30 at #40.\n"
+            "Rename one, or move the personal copy aside. That directory was read and never\n"
+            "written to, and the run continued."
         )
 
     statuses = (WRITTEN, UNCHANGED, UPDATED, KEPT, REMOVED, ORPHANED)
@@ -984,7 +1067,7 @@ def main(argv: list[str] | None = None) -> int:
         team = plan_team(project)
         flows = plan_workflows(project)
         route = plan_router(project)
-    report(project, files, team, flows, route, dry=not args.write)
+    report(project, files, team, flows, route, personal_collisions(args.template), dry=not args.write)
     return 0
 
 
