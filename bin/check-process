@@ -107,6 +107,12 @@ TYPE_PREFIX = re.compile(r"^(?:feat|fix|chore|docs|refactor|test|style|build|ci|
 # may not, and a closer is at least as long as the opener it answers.
 FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
 
+# An inline code span, CommonMark's rule reduced to what a body actually holds:
+# a run of backticks, the shortest content that reaches an equal run, and no
+# newline inside. #176. Masked rather than removed, so a column in a report
+# still points where the reader is looking.
+SPAN = re.compile(r"(`+)(.+?)\1")
+
 # A sha of nothing. A push event carries it as `before` when a branch is
 # created and as `after` when one is deleted.
 EMPTY_SHA = "0" * 40
@@ -409,8 +415,22 @@ def style_rules() -> tuple:
     return module.RULES
 
 
+def unspan(line: str) -> str:
+    """One line with its inline code spans blanked, keeping its length.
+
+    Rule 24 has no inline escape without this: a sentence naming the word or
+    the character a rule bans fails describing it, and the only refuge #151 left
+    was a fenced block, which reads badly in the middle of a sentence. Three
+    findings in one day needed prose about a rule (#151, #168, #178).
+
+    A span is not a line. Everything either side of one is still read, which is
+    what bounds the escape (#176).
+    """
+    return SPAN.sub(lambda m: " " * len(m.group(0)), line)
+
+
 def prose(body: str) -> list[tuple[int, str]]:
-    """The body's lines, numbered from 1, with every fenced code block dropped.
+    """The body's lines, numbered from 1, with fences dropped and spans blanked.
 
     Rule 17 asks for a gate's output in the pull request body, and six of the
     seven style rules report the pattern they caught. Pasting what
@@ -430,7 +450,7 @@ def prose(body: str) -> list[tuple[int, str]]:
             if found:
                 opener = found.group(1)
             else:
-                kept.append((n, line))
+                kept.append((n, unspan(line)))
         elif found and found.group(1)[0] == opener[0] and len(found.group(1)) >= len(opener) and not found.group(2).strip():
             opener = ""
     return kept
@@ -439,8 +459,8 @@ def prose(body: str) -> list[tuple[int, str]]:
 def check_style(pull: Pull) -> Check:
     """Rule 24 over the two surfaces a file checker never sees.
 
-    Only the body skips fences. A commit subject is one line and nothing is
-    pasted into one, so it is read whole.
+    Only the body skips fences and spans. A commit subject is one line and
+    nothing is pasted into one, so it is read whole (#151, #176).
     """
     lines = [("body", n, line) for n, line in prose(pull.body)]
     lines += [(c.sha[:8] or "subject", 1, c.subject) for c in pull.commits if not c.merge]

@@ -237,6 +237,45 @@ class TestTheChecksThatTravel:
         assert "body:3:" in done.stdout
         assert "body:6:" not in done.stdout
 
+    def test_a_banned_pattern_inside_a_backtick_span_passes(self, tmp_path):
+        """#176. A sentence naming the character a rule bans fails describing it.
+
+        A fence was the only refuge #151 left, and one in mid-sentence reads
+        badly. Three findings in one day needed prose about a rule.
+        """
+        body = "Closes #10\n\nThe rule catches an `" + chr(8212) + "` in prose.\n"
+        done = run(project(tmp_path, AGENTKIT_CONFIG), pull(body=body), tmp_path)
+        assert done.returncode == 0, done.stdout
+        assert status(done.stdout, "style") == "pass"
+
+    def test_the_same_pattern_outside_the_span_still_fails(self, tmp_path):
+        """A span is not a line. Either side of one keeps its gate."""
+        body = (
+            "Closes #10\n\nThe rule catches an `" + chr(8212) + "`, and here is one "
+            + chr(8212) + " bare.\n"
+        )
+        done = run(project(tmp_path, AGENTKIT_CONFIG), pull(body=body), tmp_path)
+        assert done.returncode == 1
+        assert status(done.stdout, "style") == "FAIL"
+        assert "body:3:" in done.stdout
+
+    def test_a_span_does_not_exempt_a_commit_subject(self, tmp_path):
+        """#151 settled that a subject is read whole, and #176 did not change it."""
+        commits = [
+            {
+                "sha": "1234567890abcdef",
+                "message": "A subject with `" + chr(8212) + "` in a span #10\n\nWhy.\n",
+                "parents": 1,
+            }
+        ]
+        done = run(
+            project(tmp_path, AGENTKIT_CONFIG),
+            pull(body="Closes #10\n\nWhat was verified.\n", commits=commits),
+            tmp_path,
+        )
+        assert done.returncode == 1
+        assert status(done.stdout, "style") == "FAIL"
+
     def test_a_fence_does_not_exempt_a_commit_subject(self, tmp_path):
         """A subject is one line, and a fence in a body never reaches it."""
         payload = pull(
