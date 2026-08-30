@@ -28,3 +28,16 @@ ignore = [
     "E501",   # line length: the comments are the point, and many are prose
     "SIM108", # ternaries are not always clearer than an if/else
 ]
+
+# `bin/` holds two kinds of executable and `target-version` cannot tell them
+# apart. `bin/verify` and `bin/check-process` ask uv for an interpreter and may
+# use anything. The rest carry `#!/usr/bin/env python3` and run on whatever the
+# machine has, which on a stock macOS is 3.9.
+#
+# UP017 rewrites `datetime.now(timezone.utc)` to `datetime.now(UTC)`, and that
+# alias arrived in 3.11. It is how #111 happened: the config told the code it
+# could use an API the shebang cannot promise, and `bin/adopt` then failed on
+# the first command the README gives a new adopter. `tests/test_interpreter.py`
+# asserts the floor those scripts actually hold to.
+[lint.per-file-ignores]
+"bin/*" = ["UP017"]
