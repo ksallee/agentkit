@@ -189,6 +189,111 @@ class TestAnUpstreamChange:
         assert not list(project.rglob("*.local"))
 
 
+class TestAPathTheTemplateStoppedShipping:
+    """The fifth outcome, keyed on a manifest row `seeds.json` no longer names.
+
+    `plan` iterates the seed list, so a path seeded by an earlier run and since
+    dropped was invisible to it. The file stayed in the project forever and its
+    manifest row went on the next write, leaving nothing to say agentkit had
+    ever put it there.
+    """
+
+    @pytest.fixture
+    def dropped(self, template, project):
+        """A project holding STYLE.md after the template stopped seeding it."""
+        adopt.write(template, project)
+        (template / "seeds.json").write_text(json.dumps({"tracked": [".claude/skills/"]}))
+        return project / STYLE
+
+    def test_a_plan_names_the_orphan_and_leaves_it_alone(self, template, project, dropped):
+        assert statuses(adopt.plan(template, project))[STYLE] == adopt.REMOVED
+        assert dropped.is_file()
+
+    def test_a_write_deletes_it(self, template, project, dropped):
+        assert statuses(adopt.write(template, project))[STYLE] == adopt.REMOVED
+        assert not dropped.exists()
+
+    def test_its_row_goes_with_it(self, template, project, dropped):
+        adopt.write(template, project)
+        assert STYLE not in adopt.manifest(project)
+
+    def test_the_directory_it_emptied_goes_too(self, template, project, dropped):
+        adopt.write(template, project)
+        assert not (project / "docs").exists()
+
+    def test_everything_still_seeded_is_untouched(self, template, project, dropped):
+        assert statuses(adopt.write(template, project))[SKILL] == adopt.UNCHANGED
+
+    def test_an_edited_orphan_stays(self, template, project, dropped):
+        dropped.write_text("ours now\n")
+        assert statuses(adopt.write(template, project))[STYLE] == adopt.ORPHANED
+        assert dropped.read_text() == "ours now\n"
+
+    def test_an_edited_orphan_grows_no_sidecar(self, template, project, dropped):
+        """Nothing replaced it, so there is no second copy to move aside."""
+        dropped.write_text("ours now\n")
+        adopt.write(template, project)
+        assert not list(project.rglob("*.local"))
+
+    def test_an_edited_orphan_keeps_its_manifest_row(self, template, project, dropped):
+        """The record of what agentkit wrote there, which is the half #41 lost."""
+        was = adopt.manifest(project)[STYLE]
+        dropped.write_text("ours now\n")
+        adopt.write(template, project)
+        assert adopt.manifest(project)[STYLE] == was
+
+    def test_an_edited_orphan_is_named_on_every_later_run(self, template, project, dropped):
+        dropped.write_text("ours now\n")
+        adopt.write(template, project)
+        assert statuses(adopt.write(template, project))[STYLE] == adopt.ORPHANED
+
+    def test_an_orphan_deleted_by_hand_is_reported_nowhere(self, template, project, dropped):
+        """No file, so no outcome. The row stays as the record of what was written."""
+        dropped.unlink()
+        assert STYLE not in statuses(adopt.write(template, project))
+        assert STYLE in adopt.manifest(project)
+
+    def test_a_row_this_template_still_seeds_is_never_an_orphan(self, template, project):
+        adopt.write(template, project)
+        rows = statuses(adopt.write(template, project))
+        assert adopt.REMOVED not in rows.values()
+        assert adopt.ORPHANED not in rows.values()
+
+
+class TestARenamedSkill:
+    """`seeds.json` tracks `.claude/skills/` as a directory, so a rename upstream
+    leaves the old `SKILL.md` in the target. A skill directory that exists loads,
+    and the orphan competes for the same triggers as its replacement.
+    """
+
+    @pytest.fixture
+    def renamed(self, template, project):
+        adopt.write(template, project)
+        skills = template / ".claude" / "skills"
+        (skills / "demo").rename(skills / "planner")
+        return project
+
+    def test_the_old_skill_goes_and_the_new_one_lands(self, template, renamed):
+        rows = statuses(adopt.write(template, renamed))
+        assert rows[SKILL] == adopt.REMOVED
+        assert rows[".claude/skills/planner/SKILL.md"] == adopt.WRITTEN
+        assert not (renamed / ".claude" / "skills" / "demo").exists()
+
+    def test_an_edited_old_skill_stays_beside_its_replacement(self, template, renamed):
+        (renamed / SKILL).write_text("our own trigger list\n")
+        rows = statuses(adopt.write(template, renamed))
+        assert rows[SKILL] == adopt.ORPHANED
+        assert (renamed / SKILL).read_text() == "our own trigger list\n"
+        assert (renamed / ".claude" / "skills" / "planner" / "SKILL.md").is_file()
+
+    def test_the_directory_holding_an_edited_skill_survives(self, template, renamed):
+        """Its unedited sibling is removed, and the directory stays because the skill does."""
+        (renamed / SKILL).write_text("our own trigger list\n")
+        adopt.write(template, renamed)
+        assert not (renamed / ".claude" / "skills" / "demo" / "reference.md").exists()
+        assert (renamed / ".claude" / "skills" / "demo").is_dir()
+
+
 class TestWhyNothingRecordsTheProjectsOwnBytes:
     """The argument against an `--adopt-existing` mode, as a test.
 
@@ -308,6 +413,26 @@ class TestTheCommand:
         kept = next(line for line in out.splitlines() if adopt.KEPT in line)
         assert STYLE in kept
         assert STYLE + ".local" in kept
+
+    def test_the_plan_names_an_orphan_and_says_it_would_go(self, template, project, capsys):
+        adopt.main([str(project), "--write", "--pack", "none", "--template", str(template)])
+        (template / "seeds.json").write_text(json.dumps({"tracked": [".claude/skills/"]}))
+        capsys.readouterr()
+        adopt.main([str(project), "--template", str(template)])
+        out = capsys.readouterr().out
+        assert f"{adopt.REMOVED:<9} {STYLE}" in out
+        assert "still hash to what the manifest recorded" in out
+        assert (project / STYLE).is_file()
+
+    def test_an_edited_orphan_gets_a_paragraph_of_its_own(self, template, project, capsys):
+        adopt.main([str(project), "--write", "--pack", "none", "--template", str(template)])
+        (template / "seeds.json").write_text(json.dumps({"tracked": [".claude/skills/"]}))
+        (project / STYLE).write_text("ours now\n")
+        capsys.readouterr()
+        adopt.main([str(project), "--write", "--pack", "none", "--template", str(template)])
+        out = capsys.readouterr().out
+        assert f"{adopt.ORPHANED:<9} {STYLE}" in out
+        assert "competes for its" in out
 
     def test_a_kept_file_gets_a_paragraph_of_its_own(self, template, project, capsys):
         (project / STYLE).parent.mkdir(parents=True)
