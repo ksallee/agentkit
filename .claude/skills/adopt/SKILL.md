@@ -40,12 +40,22 @@ Check these and print the fix. Don't work around them.
 
 | Needs | Check | Fix |
 |---|---|---|
-| An agentkit checkout | `ls $AGENTKIT/bin/adopt` | `git clone git@github.com:ksallee/agentkit.git` |
+| An agentkit checkout, with the session running inside it | `ls bin/adopt` | `git clone git@github.com:ksallee/agentkit.git`, then work from that directory |
 | python3 | `python3 --version` | Ships with macOS. |
+| The target directory exists | `ls -d <project>` | `git clone <remote> <path>` where the project already has a remote, `mkdir <path>` where it has none |
 | The target is a git repository | `git -C <project> rev-parse --git-dir` | `git init` |
 | It has a commit, or the operator knows what a write costs without one | `git -C <project> rev-parse HEAD` | Say which of the two states the target is in before writing |
 
-Those two rows are one precondition read twice, and the second carries the
+**A new project with an empty remote and no local directory is cloned, never
+created by hand.** `git clone <remote> <path>` brings `origin` and the server's
+default branch name with it. `git init` takes whatever `init.defaultBranch`
+says on that machine, so a local `master` pushed to a remote whose default is
+`main` is a two-branch repository, found at the first push. `adopt` performs no
+clone, and the directory has to be there before it runs: `git -C` on a path
+that does not exist fails with `cannot change to '<path>': No such file or
+directory`, a different failure from a directory that is not a repository.
+
+The last two rows are one precondition read twice, and the second carries the
 reason. Adoption replaces files and `git checkout` is the way back, so a
 repository with a commit has a recovery. A repository with none passes
 `rev-parse --git-dir` and has nothing to check out: undoing a write there means
@@ -155,10 +165,11 @@ times in one adoption before anybody said what they were.
 ## Run the plan first, always
 
 ```sh
-python3 $AGENTKIT/bin/adopt /path/to/project
+python3 bin/adopt /path/to/project
 ```
 
-That writes nothing. Read the outcome for every file back to the operator
+Run it from the agentkit checkout, with the target as the path. That writes
+nothing. Read the outcome for every file back to the operator
 before proposing a write.
 
 | Outcome | What it means | What a write does |
@@ -294,7 +305,7 @@ silent overwrite of work nobody here wrote.
 ## Writing
 
 ```sh
-python3 $AGENTKIT/bin/adopt /path/to/project --write --pack python \
+python3 bin/adopt /path/to/project --write --pack python \
   --name mac-hours --summary "Project-scoped time tracker."
 ```
 
