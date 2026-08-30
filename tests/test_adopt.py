@@ -1136,7 +1136,9 @@ class TestTheIgnoreFile:
         """A project runs the generators it was seeded with, and a run writes into `design/`.
 
         The output is a file the project never wrote, so it stays out of the
-        index and the generators beside it stay tracked (#89).
+        index and the generators beside it stay tracked (#89). `screens.json`
+        sits in the same directory as the `canvas.json` a run writes, so the
+        layout is named exactly and never as `design/*.json` (#97).
         """
         import subprocess
 
@@ -1144,7 +1146,7 @@ class TestTheIgnoreFile:
         env = {"PATH": "/usr/bin:/bin", "HOME": str(project)}
         subprocess.run(["git", "-C", str(project), "init"], check=True, capture_output=True, env=env)
         (project / "design").mkdir(exist_ok=True)
-        written = ("Home.dc.html", "Home.classes.html", "build.py", "screens.json")
+        written = ("Home.dc.html", "Home.classes.html", "canvas.json", "build.py", "screens.json")
         for name in written:
             (project / "design" / name).write_text("x\n")
 
@@ -1156,9 +1158,13 @@ class TestTheIgnoreFile:
                 env=env,
             )
 
-        done = ignored("design/Home.dc.html", "design/Home.classes.html")
+        done = ignored("design/Home.dc.html", "design/Home.classes.html", "design/canvas.json")
         assert done.returncode == 0
-        assert done.stdout.split() == ["design/Home.dc.html", "design/Home.classes.html"]
+        assert done.stdout.split() == [
+            "design/Home.dc.html",
+            "design/Home.classes.html",
+            "design/canvas.json",
+        ]
         kept = ignored("design/build.py", "design/screens.json")
         assert kept.returncode == 1, kept.stdout
 

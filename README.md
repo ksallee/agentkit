@@ -40,10 +40,9 @@ that already has a router keeps it untouched, and the `adopt` skill asks how you
 want the two reconciled.
 
 Your `.gitignore` gets a delimited block carrying `.agentkit/local.*`,
-`.claude/worktrees/` and the two artboard patterns a `design/` run writes, and
-it is the one file a rerun edits in place. Git reads
-every line of it on its own, so the block is rewritten and every line outside it
-stays where you put it.
+`.claude/worktrees/` and the three lines an artboard run writes into `design/`,
+and it is the one file a rerun edits in place. Git reads every line of it on its
+own, so the block is rewritten and every line outside it stays where you put it.
 
 The `adopt` skill asks the six answers the team layer and the router need. The
 pack is the one it refuses to guess, because a gate list naming a command you do
