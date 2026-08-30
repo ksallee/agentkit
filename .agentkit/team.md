@@ -19,11 +19,11 @@ The agent merges the pull requests it opens. Two conditions come with that:
 - **The operator QAs after the fact.** A defect found then is a new issue, and
   the branch that would have waited for a review is already off the board.
 
-**A second reader reopens it, and it was reopened.** @salleedesign got write
-access on 2026-08-30 and the line was asked again the same hour. The permission
-holds for now: somebody who has read nothing is not yet reviewing. It gets
-asked a third time at his first review of a pull request, which is the event
-this clause was written for.
+**A second reader reopens it. It was reopened and it held.** @salleedesign got
+write access on 2026-08-30 and the line was asked the same hour. He adopts this
+scaffolding into his own projects and does not work on it, so agentkit has one
+operator and the clause describes a situation that has not arrived. It gets
+asked again at his first review of a pull request here.
 
 Settled 2026-08-29 in #6, which carries what the alternative was.
 
@@ -38,9 +38,16 @@ the `area:` labels on the board.
 | Mechanism: `bin/`, `seeds.json`, the manifest | @ksallee |
 | Skills: what a project gets under `.claude/` | @ksallee |
 
-One person owns every area, so no row settles a disagreement today.
-@salleedesign has write access and owns none of them. A second owner is one
-edit to the table, made when he takes an area rather than when he arrives.
+One person owns every area, so no row settles a disagreement today. A second
+owner is one edit to the table, made when somebody takes an area rather than
+when they arrive.
+
+**@salleedesign adopts this, he does not maintain it.** Write access, no area,
+and the first person to run `bin/adopt` against a project whose rules nobody
+here wrote. That makes him the audience for `templates/`, the role guides and
+everything under `.claude/skills/`, and the reason a question about what a
+seeded project gets outranks a question about what this repository has. #25 is
+where that run is tracked, and it stopped being hypothetical on 2026-08-30.
 
 ## Conventions this project settled
 
