@@ -52,6 +52,24 @@ uncommitted changes gets its `git diff` written to the scratchpad first, and
 the recap says where. And a stale worktree's files compared against today's
 `main` decide nothing: `main` moved, so they differ either way.
 
+**Then ask what survived on the remote.** Everything above is local, and a
+merged branch can outlive its merge on GitHub: `gh pr merge --delete-branch`
+fails on its local step when it is run from a worktree, and the remote deletion
+is what it never reaches. Nothing else looks for them, and they accumulate. The
+first run of this check in agentkit, on 2026-08-30, found sixteen.
+
+```sh
+gh pr list --state merged --limit 20 --json number,headRefName \
+  -q '.[] | .headRefName' | while read -r b; do
+  git ls-remote --exit-code --heads origin "$b" >/dev/null 2>&1 && echo "$b"
+done
+```
+
+Delete each with `git push origin --delete <b>`. A branch here is debris by
+definition: its pull request is merged and the branch is still on the remote.
+`docs/development/WORKFLOW.md` under `## Easy to get wrong` carries the failure
+that leaves them.
+
 ## 2. The prose the session added
 
 `bin/check-style` catches six spellings. Voice, restatement and padding are a
