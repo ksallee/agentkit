@@ -202,11 +202,17 @@ Never inline. Shell quoting mangles a body that contains backticks, quotes or a
 ```bash
 gh label list
 gh issue create --title "..." --label "area: rules,bug" --body-file /tmp/issue.md
+gh pr edit 12 --add-label "area: mechanism" --add-label "bug"
 ```
 
-One `area:` label plus at least one kind label. `effort:` is a third axis and
-never counts as the kind. The taxonomy grows as the project does, which is why
-the list gets read rather than remembered.
+One `area:` label plus at least one kind label, on the issue and on the pull
+request both. `effort:` is a third axis and never counts as the kind. The
+taxonomy grows as the project does, which is why the list gets read rather than
+remembered.
+
+Both objects carry them because both sit on the board and get filtered
+separately, and they can disagree. The process job reads the pull request's own
+labels, so a bare pull request fails rule 15 with its issue labelled correctly.
 
 ### 16. Open a pull request whose body starts with `Closes #12`
 

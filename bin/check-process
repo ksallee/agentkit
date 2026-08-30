@@ -422,6 +422,9 @@ def check_labels(pull: Pull, declared: dict) -> Check:
     A kind is any label carrying neither the area prefix nor an axis prefix, so
     the check follows a taxonomy as it grows instead of holding a second copy
     of `gh label list`.
+
+    The labels read are the pull request's own. Its issue carries a separate
+    set, and the two can disagree, so the failure names `gh pr edit`.
     """
     labels = declared.get("labels")
     if not labels or not labels.get("area"):
@@ -433,10 +436,20 @@ def check_labels(pull: Pull, declared: dict) -> Check:
     kinds = [name for name in pull.labels if not name.startswith((area, *axes))]
     problems = []
     if len(areas) != 1:
-        problems.append(f"{len(areas)} label(s) starting `{area}`, and rule 15 wants one: {areas or pull.labels}")
+        problems.append(
+            f"The pull request carries {len(areas)} label(s) starting `{area}`, "
+            f"and rule 15 wants one: {areas or list(pull.labels)}"
+        )
     if not kinds:
-        problems.append(f"No kind label. `{area}` and {list(axes)} are the other axes: {list(pull.labels)}")
+        problems.append(
+            f"The pull request carries no kind label. `{area}` and {list(axes)} "
+            f"are the other axes: {list(pull.labels)}"
+        )
     if problems:
+        problems.append(
+            f'Label the pull request itself: gh pr edit {pull.number} --add-label "{area}<name>" '
+            '--add-label "<kind>". The issue it closes carries its own set, and this check never reads it.'
+        )
         return Check("labels", "15", FAIL, "\n".join(problems))
     return Check("labels", "15", PASS, ", ".join(areas + kinds))
 
