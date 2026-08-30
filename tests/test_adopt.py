@@ -244,6 +244,150 @@ class TestTheSeededProbe:
         assert "probes/skill_sources.py" in {rel for rel, _ in adopt.seeds(ROOT, "typescript")}
 
 
+class TestTheSeededTest:
+    """`tests/test_scaffolding.py`, the one file under `tests/` named on its own line.
+
+    A project's `test` gate runs `uv run pytest`, and pytest exits non-zero
+    when it collects nothing, so a project with no test directory failed a gate
+    of its own on the day it was adopted (#108). The seeded file asserts what an
+    adopted project has, so the green says the scaffolding is sound.
+    """
+
+    def test_the_scaffolding_test_seeds(self):
+        assert "tests/test_scaffolding.py" in {rel for rel, _ in adopt.seeds(ROOT)}
+
+    def test_no_other_file_under_tests_seeds(self):
+        """A `/` typed onto that entry would carry this repository's own suite.
+
+        `tests/test_adopt.py` reads `bin/adopt`, which no project has, so every
+        sibling of the seeded file fails in the first project that took it.
+        """
+        others = {
+            p.relative_to(ROOT).as_posix()
+            for p in (ROOT / "tests").rglob("*")
+            if p.is_file() and "__pycache__" not in p.parts
+        }
+        others -= {"tests/test_scaffolding.py"}
+        assert "tests/test_adopt.py" in others, "this asserts nothing without a sibling"
+        for pack in adopt.PACKS:
+            assert not others & {rel for rel, _ in adopt.seeds(ROOT, pack)}, pack
+
+    def test_the_note_explains_the_one_entry(self):
+        declared = json.loads((ROOT / "seeds.json").read_text())
+        assert "tests/test_scaffolding.py" in declared["note"]
+
+    def test_the_python_packs_run_it(self):
+        for pack in ("python", "python+typescript"):
+            commands = {command for _, command, _ in adopt.PACKS[pack]}
+            assert "uv run pytest" in commands, pack
+
+
+class TestTheSeededLintConfig:
+    """`ruff.toml`, seeded because the python packs declare a command that reads it.
+
+    `uvx ruff check .` with no config in reach runs under ruff's own default
+    set, which reported seven errors on a fresh adoption, every one of them in
+    a file this template shipped (#108).
+    """
+
+    def test_the_config_seeds(self):
+        assert "ruff.toml" in {rel for rel, _ in adopt.seeds(ROOT)}
+
+    def test_the_header_does_not_deny_it(self):
+        """The header asserted the opposite until the manifest started claiming it."""
+        assert "not seeded into a project" not in (ROOT / "ruff.toml").read_text()
+
+    def test_the_python_packs_declare_the_command_that_reads_it(self):
+        for pack in ("python", "python+typescript"):
+            commands = {command for _, command, _ in adopt.PACKS[pack]}
+            assert "uvx ruff check ." in commands, pack
+
+    def test_the_note_explains_the_entry(self):
+        declared = json.loads((ROOT / "seeds.json").read_text())
+        assert "ruff.toml" in declared["note"]
+
+
+class TestTheGateRunAfterAFirstWrite:
+    """A first write ends by running what it seeded, and reports without failing.
+
+    The adoption is written whatever the gates say, so a red gate leaves
+    `bin/adopt` at 0. An absent toolchain is reported without running anything,
+    because `uvx ruff` on a machine with no uv fails under a gate name and says
+    nothing about the machine.
+    """
+
+    @staticmethod
+    def runner(project, exit_code):
+        """A stand-in `bin/verify` in the project, exiting how the test wants."""
+        (project / "bin").mkdir(exist_ok=True)
+        path = project / "bin" / "verify"
+        path.write_text(f"#!/bin/sh\necho the-runner-spoke\nexit {exit_code}\n")
+        path.chmod(0o755)
+        return path
+
+    @staticmethod
+    def everything_installed(monkeypatch):
+        monkeypatch.setattr(adopt.shutil, "which", lambda name: f"/usr/bin/{name}")
+
+    def test_a_pack_with_no_gates_runs_nothing(self, project, capsys):
+        assert adopt.run_gates(project, "none") == 0
+        assert "nothing to run" in capsys.readouterr().out
+
+    def test_a_project_without_the_runner_runs_nothing(self, project, capsys):
+        assert adopt.run_gates(project, "python") == 0
+        assert "nothing ran: bin/verify is not here" in capsys.readouterr().out
+
+    def test_an_absent_toolchain_is_named_and_nothing_runs(self, project, capsys, monkeypatch):
+        self.runner(project, 1)
+        monkeypatch.setattr(adopt.shutil, "which", lambda name: None)
+        assert adopt.run_gates(project, "python") == 0
+        printed = capsys.readouterr().out
+        assert "nothing ran: this machine has no uv" in printed
+        assert "the-runner-spoke" not in printed
+
+    def test_a_green_run_reports_and_returns_zero(self, project, capsys, monkeypatch):
+        self.runner(project, 0)
+        self.everything_installed(monkeypatch)
+        assert adopt.run_gates(project, "python") == 0
+
+    def test_a_red_gate_does_not_fail_the_adoption(self, project, capsys, monkeypatch):
+        self.runner(project, 1)
+        self.everything_installed(monkeypatch)
+        assert adopt.run_gates(project, "python") == 1
+        assert "The adoption is written" in capsys.readouterr().out
+
+    def test_uv_is_wanted_whatever_the_pack_declares(self, monkeypatch):
+        """`bin/verify` carries a `uv run --script` shebang, so uv runs every gate."""
+        monkeypatch.setattr(adopt.shutil, "which", lambda name: None)
+        assert "uv" in adopt.missing_tools("none")
+        assert set(adopt.missing_tools("python")) == {"uv", "uvx"}
+
+    def test_a_seeded_checker_needs_nothing_installed(self, monkeypatch):
+        """`bin/check-style` arrives with the runner, so it is never looked up."""
+        monkeypatch.setattr(adopt.shutil, "which", lambda name: None)
+        assert "bin/check-style" not in adopt.missing_tools("python")
+
+    def test_a_first_write_ends_with_the_gates(self, template, project, capsys):
+        adopt.main([str(project), "--write", "--pack", "python", "--template", str(template)])
+        assert "gates    " in capsys.readouterr().out
+
+    def test_a_rerun_does_not_run_them_again(self, template, project, capsys):
+        adopt.main([str(project), "--write", "--pack", "python", "--template", str(template)])
+        capsys.readouterr()
+        adopt.main([str(project), "--write", "--template", str(template)])
+        assert "gates    " not in capsys.readouterr().out
+
+    def test_a_plan_runs_nothing(self, template, project, capsys):
+        adopt.main([str(project), "--pack", "python", "--template", str(template)])
+        assert "gates    " not in capsys.readouterr().out
+
+    def test_the_flag_skips_them(self, template, project, capsys):
+        adopt.main(
+            [str(project), "--write", "--pack", "python", "--no-gates", "--template", str(template)]
+        )
+        assert "gates    " not in capsys.readouterr().out
+
+
 class TestTheRecordedPack:
     """The manifest carries the pack, because a rerun that guessed it seeds the wrong driver."""
 

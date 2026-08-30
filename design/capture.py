@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Capture every screen `design/screens.json` names, as two artboard files each.
 
     uv run --with playwright python design/capture.py
@@ -108,12 +107,14 @@ def commit(root: Path, ignore: Path) -> str:
             capture_output=True,
             text=True,
             timeout=10,
+            check=False,
         )
         status = subprocess.run(
             ["git", "-C", str(root), "status", "--porcelain"],
             capture_output=True,
             text=True,
             timeout=30,
+            check=False,
         )
     except (OSError, subprocess.SubprocessError):
         return ""

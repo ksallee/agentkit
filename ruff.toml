@@ -1,9 +1,17 @@
-# The same rules mac-hours uses, so code moving between the two is judged once.
-# A `ruff.toml` rather than a `pyproject.toml`, because this repository is a
-# template and not a Python package: there is nothing here to build or install.
+# The lint rules, here and in every project seeded from here. `seeds.json`
+# tracks this file, so a project owns its copy and a rerun keeps an edit to it
+# as `ruff.toml.local`, the way it keeps any tracked file's.
 #
-# This file is not seeded into a project. A project picks its own lint config,
-# and the pack only declares the command.
+# It travels with the command that reads it. The python packs declare `uvx ruff
+# check .`, and ruff with no config in reach applies its own default set, which
+# is broader than this one and is whatever the installed version has decided it
+# is. A project seeded without this file points that set at files agentkit
+# wrote and cannot be asked to fix (#108).
+#
+# The selection is the one mac-hours uses, so code moving between the two is
+# judged once. A `ruff.toml` and not a `pyproject.toml`, because neither this
+# template nor a freshly seeded project has anything to build or install. A
+# project that packages itself moves these keys into its own `pyproject.toml`.
 
 line-length = 100
 target-version = "py311"
@@ -11,7 +19,7 @@ extend-exclude = [".venv"]
 
 # `bin/` holds executables with no `.py` suffix, and ruff walks a directory by
 # extension. Without this the lint gate reports "No Python files found" and
-# passes.
+# passes. A seeded project has the same `bin/` entries, so the line carries.
 extend-include = ["bin/*"]
 
 [lint]

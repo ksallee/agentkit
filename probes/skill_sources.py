@@ -107,7 +107,7 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
     page.
     """
 
-    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ARG002
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
         return None
 
 
@@ -270,7 +270,7 @@ def same_page(cited_url: str, landing: str) -> bool:
 
     def plain(url: str) -> str:
         rest = url.split("://", 1)[-1].rstrip("/")
-        return rest[4:] if rest.startswith("www.") else rest
+        return rest.removeprefix("www.")
 
     return plain(cited_url) == plain(landing)
 

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Write every wireframe artboard, and the canvas layout that holds them.
 
     python3 design/build.py
