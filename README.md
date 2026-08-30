@@ -33,8 +33,8 @@ The command reads the rest of the line as your sentence and says it back:
 which directory, and whether this is a first adoption or an update. Then it
 asks the five answers in one pass, runs the plan, and writes nothing until you
 say yes. Every adoption runs from a checkout of this repository, including a
-rerun, which is why `seeds.json` withholds that skill and that command from the
-projects it seeds.
+rerun, so `seeds.json` withholds that skill and that command from the projects
+it seeds.
 
 `bin/adopt` is the tool underneath, and calling it directly is for a case the
 skill does not cover:

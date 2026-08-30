@@ -90,7 +90,7 @@ which needs a paid plan and stores the content on somebody else's
 infrastructure. `file` keeps them at a path in the repository, named after the
 value: `file, design/`. `none` publishes nothing. `design-references` holds
 the reference list itself and reaches no service, so there is no second row to
-answer. #123 removed one, and #131 is what would put it back.
+answer. #123 removed one, and #131 would put it back.
 
 A skill reads this section as prose. No machine does, and no gate could: the
 one consumer is a person or an agent halfway through a design task, there is
