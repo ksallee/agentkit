@@ -126,8 +126,9 @@ and an explicit **out of scope** where the surrounding area is messy.
 
 ### 11. Assign the issue to yourself, then branch off `main`, named after the issue number
 
-`12` or `12-slug`. The process job checks that the branch number matches the
-issue the pull request body closes, and that somebody is assigned.
+`12` or `12-slug`. The process job checks that the branch number matches an
+issue the pull request body closes or advances under rule 16, and that somebody
+is assigned to it.
 
 ```bash
 gh issue view 12 --json assignees      # is anyone on it already?
@@ -197,6 +198,17 @@ the list gets read rather than remembered.
 
 The keyword has to be in the body. A comment cross-references and does not
 close on merge.
+
+**Work that advances an issue without finishing it opens `Advances #17`.**
+GitHub gives that word no closing power, so the issue survives the merge and
+goes on being the record of what is left. Two things come with the opening: a
+`## Remaining` section in the body naming the unfinished part, and the issue
+body edited under rule 23 in the same pull request. Rule 11 is unchanged, and
+the process job reads the advanced number for the branch and the assignee.
+
+Advance an issue when the half already built is worth reviewing on its own.
+Where the second half turns out to be separate work, file it as its own issue
+and close this one.
 
 State in the body **what you verified and what you did not**. "Tests pass" does
 not verify a UI change: say which page you loaded, what you clicked and what

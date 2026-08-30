@@ -10,10 +10,10 @@
     bin/check-process --push --before SHA --after SHA
 
 Seven checks. Five are code and travel to every project unchanged: the pull
-request body opens `Closes #N`, the branch is named after an issue that body
-closes, that issue has an assignee, every non-merge commit subject ends `#N`
-and carries no type prefix, and the body and the subjects pass the style rules
-`bin/check-style` already holds.
+request body opens `Closes #N` or `Advances #N`, the branch is named after an
+issue that opening names, that issue has an assignee, every non-merge commit
+subject ends `#N` and carries no type prefix, and the body and the subjects
+pass the style rules `bin/check-style` already holds.
 
 Two are configuration, because they read a project's own facts:
 
@@ -27,9 +27,16 @@ every run and written to the job summary. Passing a configured rule nobody
 configured is how a check becomes decoration, so an unconfigured one says so
 where a reader of the pull request sees it.
 
-`Capture change, no issue.` as the first line of the body waives the body,
-branch, assignee and subject checks, which is rules 11, 13 and 16. Rule 21
-gives a capture change no issue to close. Labels, diff and style still apply.
+Rule 16 in WORKFLOW.md gives the body three openings and holds the wording for
+all three. The first line carries them.
+
+`Capture change, no issue.` waives the body, branch, assignee and subject
+checks, which is rules 11, 13 and 16. Rule 21 gives a capture change no issue
+to close. Labels, diff and style still apply.
+
+`Advances #N` waives nothing. The issue it names feeds the branch and assignee
+checks the way a closed one does, and the body check asks for the `## Remaining`
+heading as well.
 
 Rule 18 is absent on purpose. The permission to merge lives in
 `.agentkit/team.md` as a sentence, and a machine cannot tell an approved merge
@@ -67,6 +74,18 @@ CAPTURE = "Capture change, no issue."
 # GitHub closes an issue on any of these, so all of them are read. Rule 16
 # writes `Closes`, and a body opening `Fixes #12` still closes #12 on merge.
 CLOSING = re.compile(r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)\b", re.I)
+
+# Rule 16's second opening, for a pull request that lands half an issue.
+# GitHub gives the word no closing power, so the issue survives the merge.
+# Read off the first line alone: a `#N` in prose further down is a reference
+# somebody made in passing, and it would put an unrelated issue in front of the
+# branch and assignee checks.
+ADVANCING = re.compile(r"^advances\s+#(\d+)\b", re.I)
+
+# What rule 16 asks an advancing body to carry, so the board still says what is
+# left once the pull request has scrolled away. A machine sees the heading. A
+# reader sees whether the section under it is true.
+REMAINING = re.compile(r"^\s{0,3}#{1,6}\s+remaining\b", re.I | re.M)
 
 # `12` and `12-slug`, rule 11.
 BRANCH = re.compile(r"^(\d+)(?:-|$)")
@@ -147,12 +166,34 @@ class Pull:
     def closes(self) -> list[int]:
         return [int(n) for n in CLOSING.findall(self.body)]
 
+    @property
+    def advances(self) -> list[int]:
+        return advancing(self.body)
+
+    # Every issue this branch answers for, closed or advanced. Rule 11's branch
+    # and assignee checks read this, so an advance keeps both.
+    @property
+    def linked(self) -> list[int]:
+        return linked(self.body)
+
 
 def first_line(body: str) -> str:
     for line in (body or "").splitlines():
         if line.strip():
             return line.strip()
     return ""
+
+
+def advancing(body: str) -> list[int]:
+    """The issue a body advances, from its first line. Empty for any other body."""
+    found = ADVANCING.match(first_line(body))
+    return [int(found.group(1))] if found else []
+
+
+def linked(body: str) -> list[int]:
+    """Every issue a body puts behind the branch, closed or advanced."""
+    closed = [int(n) for n in CLOSING.findall(body)]
+    return closed + [n for n in advancing(body) if n not in closed]
 
 
 def bundle(payload: dict) -> Pull:
@@ -215,7 +256,7 @@ def fetch(repo: str, number: int) -> Pull:
 
     issues: dict[str, list[str]] = {}
     unreadable: dict[str, str] = {}
-    for issue in sorted({int(n) for n in CLOSING.findall(body)}):
+    for issue in sorted(set(linked(body))):
         try:
             found = gh(f"repos/{repo}/issues/{issue}")
         except RuntimeError as exc:
@@ -258,43 +299,55 @@ def config(root: Path) -> dict:
 
 
 def check_body(pull: Pull) -> Check:
-    """Rule 16. The body opens `Closes #N`, or waives it as a capture change."""
+    """Rule 16. The body opens `Closes #N`, `Advances #N`, or the capture line."""
     first = first_line(pull.body)
     if not first:
         return Check("body", "16", FAIL, "The body is empty. It opens `Closes #N`.")
     if pull.capture:
         return Check("body", "16", WAIVED, f"`{CAPTURE}` under rule 21.")
+    if pull.advances:
+        number = pull.advances[0]
+        if not REMAINING.search(pull.body):
+            return Check(
+                "body",
+                "16",
+                FAIL,
+                f"`Advances #{number}` leaves the issue open, and rule 16 asks the body for a "
+                "`## Remaining` heading saying what is left. Edit the issue body too, rule 23.",
+            )
+        return Check("body", "16", PASS, f"Advances #{number}. The issue stays open on merge.")
     if not CLOSING.match(first):
         return Check(
             "body",
             "16",
             FAIL,
-            f"The body opens `Closes #N` on its own line, or `{CAPTURE}`. It opens: {first[:70]!r}",
+            f"The body opens `Closes #N` on its own line, `Advances #N`, or `{CAPTURE}`. "
+            f"It opens: {first[:70]!r}",
         )
     return Check("body", "16", PASS, "Closes " + ", ".join(f"#{n}" for n in pull.closes))
 
 
 def check_branch(pull: Pull) -> Check:
-    """Rule 11. The branch is named after an issue the body closes."""
+    """Rule 11. The branch is named after an issue the body closes or advances."""
     if pull.capture:
         return Check("branch", "11", WAIVED, "A capture change closes no issue.")
     found = BRANCH.match(pull.branch)
     if not found:
         return Check("branch", "11", FAIL, f"`{pull.branch}` opens with no issue number. Name it `12` or `12-slug`.")
     number = int(found.group(1))
-    if number not in pull.closes:
-        closed = ", ".join(f"#{n}" for n in pull.closes) or "nothing"
-        return Check("branch", "11", FAIL, f"`{pull.branch}` is issue #{number} and the body closes {closed}.")
+    if number not in pull.linked:
+        named = ", ".join(f"#{n}" for n in pull.linked) or "nothing"
+        return Check("branch", "11", FAIL, f"`{pull.branch}` is issue #{number} and the body names {named}.")
     return Check("branch", "11", PASS, f"`{pull.branch}` is issue #{number}.")
 
 
 def check_assignee(pull: Pull) -> Check:
-    """Rule 11. Assignment claims the work, so every closed issue has one."""
+    """Rule 11. Assignment claims the work, so every issue the body names has one."""
     if pull.capture:
         return Check("assignee", "11", WAIVED, "A capture change closes no issue.")
-    if not pull.closes:
-        return Check("assignee", "11", FAIL, "The body closes no issue, so there is nobody to check.")
-    unknown = [n for n in pull.closes if str(n) not in pull.issues]
+    if not pull.linked:
+        return Check("assignee", "11", FAIL, "The body names no issue, so there is nobody to check.")
+    unknown = [n for n in pull.linked if str(n) not in pull.issues]
     if unknown:
         why = [pull.unreadable.get(str(n), "no answer") for n in unknown]
         return Check(
@@ -304,10 +357,10 @@ def check_assignee(pull: Pull) -> Check:
             "Could not read " + ", ".join(f"#{n}" for n in unknown) + "\n" + "\n".join(why)
             + "\nA 404 on an issue that exists is a token without `issues: read`.",
         )
-    empty = [n for n in pull.closes if not pull.issues[str(n)]]
+    empty = [n for n in pull.linked if not pull.issues[str(n)]]
     if empty:
         return Check("assignee", "11", FAIL, "Nobody is assigned to " + ", ".join(f"#{n}" for n in empty))
-    who = {who for n in pull.closes for who in pull.issues[str(n)]}
+    who = {who for n in pull.linked for who in pull.issues[str(n)]}
     return Check("assignee", "11", PASS, ", ".join(sorted(who)))
 
 
