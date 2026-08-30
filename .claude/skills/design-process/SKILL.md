@@ -77,16 +77,32 @@ about:
 | A cell clips | `scrollWidth > Math.ceil(width) + 1` |
 | A column lines up | the set of its cells' left edges has one member |
 | A label aligns with its values | a `Range` over each text node gives the same right edge |
-| The intended font is painting | `document.fonts.check('16px "Name"')` |
+| The intended font is painting | `mmmmmmmmmmlli` at 100px measures a different width in `"Name", <generic>` than in `<generic>` alone, for at least one of `monospace`, `serif`, `sans-serif` |
 
 An eye passes the first three when they are a pixel or two out, and a pixel or
 two out is what a person sees without knowing why.
 
 **Two failures look correct.** A page whose webfont never loaded reports the
-declared `font-family` while painting the fallback at other metrics, so the
-assertion asks `document.fonts`. And a capture taken against whatever
-configuration sat beside it records a misconfiguration as a design: pin the
-environment a capture runs in.
+declared `font-family` in its computed style while painting the fallback at
+other metrics. And a capture taken against whatever configuration sat beside it
+records a misconfiguration as a design: pin the environment a capture runs in.
+
+**`document.fonts.check` answers a different question.** It reports whether a
+matching face is available to the font set. Measured in headless Chrome 152 on
+2026-08-30, it returned `true` for a family declared in no `@font-face` and
+installed nowhere, at every moment of the page's life, which is what a typo in
+a family name and a stylesheet that never shipped both look like. It returned
+`false` for a face that does paint, until something forced that face through
+layout. The width probe in the table above moved at least one generic by 119px
+for every family that painted, and all three by 0.00px for every family that
+did not.
+
+**Three generics, no tolerance.** One generic can sit almost on top of the
+target: Courier New against `monospace` moved `mmmmmmmmmmlli` at 100px by
+2.53px, and `BESbswy` at 16px by 0.22px. A fallback renders identically in both
+spans, so a family that never paints measures 0.00px against all three and a
+threshold has nothing to protect. Both spans measure off-screen with
+`white-space: pre`, because a line break moves a width for its own reasons.
 
 **The capture is a pattern each project writes for itself.** It needs a dev
 server on a known port, a fixture built fresh each run so a stale one cannot
