@@ -18,7 +18,8 @@ Three kinds of file, and only the first is ever replaced:
   `.agentkit/manifest.json`, replaced on every rerun.
 - `.agentkit/gates.toml`, `team.md` and `phase.json` are the team layer,
   rendered from the answers and seeded once.
-- `CLAUDE.md` is the router, rendered from the answers and seeded once.
+- `CLAUDE.md` and `.github/workflows/` are rendered from the answers and
+  seeded once.
 """
 
 from __future__ import annotations
@@ -291,6 +292,10 @@ DESIGN_TABLE = (
 
 REFERENCES = ("curated", "refero")
 
+# What `team_files` renders, for the plan, which has no answers to render
+# from. `tests/test_adopt.py` checks the two agree.
+TEAM_FILES = ("gates.toml", "phase.json", "team.md")
+
 
 def team_files(answers: dict[str, str]) -> dict[str, str]:
     """The three team-layer files, rendered from the answers.
@@ -340,27 +345,42 @@ def team_files(answers: dict[str, str]) -> dict[str, str]:
     }
 
 
-def seed_team(project: Path, answers: dict[str, str]) -> list[Outcome]:
-    """Write each team-layer file that is absent, and report the rest as present."""
+def _seed_once(project: Path, where: str, bodies: dict[str, str]) -> list[Outcome]:
+    """Write each named file that is absent, and report the rest as present.
+
+    Nothing here is ever replaced and no sidecar appears, so a project's edit
+    to any of these survives every rerun. Used by the team layer and by the
+    workflows, which are generated from the same answers.
+    """
     out: list[Outcome] = []
-    for name, body in sorted(team_files(answers).items()):
-        target = project / TEAM_DIR / name
-        rel = f"{TEAM_DIR}/{name}"
+    for name, text in sorted(bodies.items()):
+        target = project / where / name
+        rel = f"{where}/{name}"
         if target.is_file():
             out.append(Outcome(rel, PRESENT))
             continue
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(body)
+        target.write_text(text)
         out.append(Outcome(rel, SEEDED))
     return out
 
 
+def _plan_once(project: Path, where: str, names: tuple[str, ...]) -> list[Outcome]:
+    """What `_seed_once` would do to each of `names`, writing nothing."""
+    return [
+        Outcome(f"{where}/{name}", PRESENT if (project / where / name).is_file() else SEEDED)
+        for name in sorted(names)
+    ]
+
+
+def seed_team(project: Path, answers: dict[str, str]) -> list[Outcome]:
+    """Write each team-layer file that is absent, and report the rest as present."""
+    return _seed_once(project, TEAM_DIR, team_files(answers))
+
+
 def plan_team(project: Path) -> list[Outcome]:
     """Which team-layer files a write would seed, writing none."""
-    return [
-        Outcome(f"{TEAM_DIR}/{name}", PRESENT if (project / TEAM_DIR / name).is_file() else SEEDED)
-        for name in sorted(("gates.toml", "phase.json", "team.md"))
-    ]
+    return _plan_once(project, TEAM_DIR, TEAM_FILES)
 
 
 # ---------------------------------------------------------------------------
@@ -559,6 +579,213 @@ def plan_router(project: Path) -> Outcome:
 
 
 # ---------------------------------------------------------------------------
+# The workflows, the only thing that runs any of this without a person
+
+
+# Rendered from the pack and seeded once, and absent from `seeds.json` for a
+# reason the router does not share. A tracked file is replaced on the next
+# adoption and the project's version moves to a `.local` sidecar. GitHub reads
+# no `.local` and nothing outside this directory, so a project that had tuned
+# its workflow would find the template's copy running in place of the one it
+# wrote, with its edit in a file that runs nowhere.
+WORKFLOWS_DIR = ".github/workflows"
+
+# Both workflows check out and install uv whatever the pack declares, because
+# `bin/verify` and `bin/check-process` carry a `uv run --script` shebang. A
+# project whose gate commands name uv nowhere still needs it on the runner.
+CHECKOUT = "      - uses: actions/checkout@v5\n"
+SETUP_UV = "      - uses: astral-sh/setup-uv@v7\n        with:\n          enable-cache: true\n"
+
+# node, pnpm, and one install per directory a pnpm gate runs in. A pnpm gate
+# fails on a clean runner with no `node_modules`, and the `python+typescript`
+# pack runs its two in `web/`, so the install follows the gate's `cwd`.
+#
+# The versions are a starting point the project edits, the same standing the
+# seeded gate commands have: nothing here checked that either matches the
+# project. `cache: pnpm` is absent because it needs a lockfile, and a project
+# adopted before its first install has none.
+SETUP_NODE = (
+    "      - uses: actions/setup-node@v5\n"
+    "        with:\n"
+    "          node-version: lts/*\n"
+    "      - uses: pnpm/action-setup@v4\n"
+    "        with:\n"
+    "          version: 10\n"
+)
+
+WORKFLOW_FILES = ("gates.yml", "process.yml")
+
+
+def pnpm_dirs(pack: str) -> list[str]:
+    """Every directory a pnpm gate runs in, `.` for one that names no `cwd`."""
+    return sorted({cwd or "." for _, command, cwd in PACKS[pack] if command.split()[0] == "pnpm"})
+
+
+def toolchain(pack: str) -> str:
+    """The steps before `bin/verify`, from what the pack's commands invoke."""
+    steps = CHECKOUT + SETUP_UV
+    where = pnpm_dirs(pack)
+    if where:
+        steps += SETUP_NODE
+    for directory in where:
+        steps += "      - run: pnpm install --frozen-lockfile\n"
+        if directory != ".":
+            steps += f"        working-directory: {directory}\n"
+    return steps
+
+
+def gates_workflow(pack: str) -> str:
+    """`.github/workflows/gates.yml`, which names no gate.
+
+    One step. `bin/verify` reads `.agentkit/gates.toml` and runs everything
+    declared there, so a gate added, renamed or removed needs no edit to the
+    workflow. A step per gate holds the gate names in a second file, and the
+    seeded copy is the one that cannot follow an edit: the project owns its
+    gate list, and a template that wrote the workflow once never sees the
+    change. A seeded copy of this repository's own four-step file died on step
+    two with `No gate named probes`, measured 2026-08-29.
+
+    What a step per gate bought was the gate name in the job's step list.
+    `bin/verify` writes its table to the run summary instead.
+    """
+    return (
+        "# Rule 17's gates. `bin/verify` runs everything `.agentkit/gates.toml`\n"
+        "# declares, so no gate is named here and changing the gate list needs no\n"
+        "# edit to this file.\n"
+        "#\n"
+        "# One step, and the per-gate result goes to the run summary. A step per gate\n"
+        "# holds the gate names in a second file, and this file is seeded once: an\n"
+        "# edit to the gate list would leave it naming gates that no longer exist.\n"
+        "#\n"
+        f"# Seeded from the {pack} pack, and a later adoption leaves it alone. The\n"
+        "# steps below install what that pack's commands need on a clean runner. A\n"
+        "# gate added later that needs another tool needs a step here.\n"
+        "\n"
+        "name: Gates\n"
+        "\n"
+        "on:\n"
+        "  pull_request:\n"
+        "  push:\n"
+        "    branches: [main]\n"
+        "\n"
+        "concurrency:\n"
+        "  group: gates-${{ github.ref }}\n"
+        "  cancel-in-progress: true\n"
+        "\n"
+        "jobs:\n"
+        "  gates:\n"
+        "    name: Every gate in .agentkit/gates.toml\n"
+        "    runs-on: ubuntu-latest\n"
+        "    steps:\n" + toolchain(pack) + "      - run: bin/verify\n"
+    )
+
+
+def process_workflow() -> str:
+    """`.github/workflows/process.yml`, which reads no pack and no answer.
+
+    Seeded even though `.agentkit/process.toml` is not. Five of the seven
+    checks are code and travel unchanged, so they run on the first pull
+    request. The other two read the taxonomy, and `bin/check-process` reports
+    each one `absent` in the run summary until somebody writes that file. A
+    project gets the five it can have, and a line naming what the other two
+    need.
+    """
+    return (
+        "# The half of rules 11, 12, 13, 15, 16, 19 and 24 a machine can read, on\n"
+        "# every pull request and every push. `bin/check-process` holds all of it, so\n"
+        "# this file names no rule text and cannot drift from the checks.\n"
+        "#\n"
+        "# Two jobs from one file because a pull request and a push carry different\n"
+        "# payloads. GitHub skips the one whose event did not fire, and the skipped\n"
+        "# job still reports itself in the checks list.\n"
+        "#\n"
+        "# `edited`, `labeled` and `unlabeled` are in the trigger list because a body\n"
+        "# fixed after a failure and a label added after a failure both have to rerun\n"
+        "# the job. Without them the only way to clear a red check is an empty commit.\n"
+        "#\n"
+        "# Two of the seven checks read `.agentkit/process.toml`: the label taxonomy\n"
+        "# for rule 15, and the paths rule 19 keeps out of a diff. Nothing seeds that\n"
+        "# file, because the area prefix is one project's own answer. Both checks\n"
+        "# report `absent` in the run summary until this project writes it, and the\n"
+        "# other five run from the first pull request.\n"
+        "\n"
+        "name: Process\n"
+        "\n"
+        "on:\n"
+        "  pull_request:\n"
+        "    types: [opened, edited, reopened, synchronize, labeled, unlabeled]\n"
+        "  push:\n"
+        "\n"
+        "# `issues: read` is the assignee check. `repos/{owner}/{repo}/issues/{n}` is\n"
+        "# a different scope from the pull request that closes it, and without this\n"
+        "# line the job reports `Could not read #N` on a pull request whose issue is\n"
+        "# assigned.\n"
+        "permissions:\n"
+        "  contents: read\n"
+        "  pull-requests: read\n"
+        "  issues: read\n"
+        "\n"
+        "concurrency:\n"
+        "  group: process-${{ github.ref }}\n"
+        "  cancel-in-progress: true\n"
+        "\n"
+        "jobs:\n"
+        "  pull-request:\n"
+        "    name: Rules 11, 13, 15, 16, 19 and 24 over the pull request\n"
+        "    if: github.event_name == 'pull_request'\n"
+        "    runs-on: ubuntu-latest\n"
+        "    steps:\n"
+        "      - uses: actions/checkout@v5\n"
+        "      - uses: astral-sh/setup-uv@v7\n"
+        "        with:\n"
+        "          enable-cache: true\n"
+        "\n"
+        "      # `.agentkit/process.toml` comes from the checkout, so a pull request\n"
+        "      # editing the taxonomy is checked against the taxonomy it proposes.\n"
+        '      - run: bin/check-process --repo "$GITHUB_REPOSITORY" --pull "$PULL"\n'
+        "        env:\n"
+        "          GH_TOKEN: ${{ github.token }}\n"
+        "          PULL: ${{ github.event.pull_request.number }}\n"
+        "\n"
+        "  push:\n"
+        "    name: Rule 12 over the push\n"
+        "    if: github.event_name == 'push'\n"
+        "    runs-on: ubuntu-latest\n"
+        "    steps:\n"
+        "      # Full history, because the check asks git whether the sha the branch\n"
+        "      # was at is still reachable from the sha it is at now. A shallow clone\n"
+        "      # has neither, and would fail every push instead of the force-pushed\n"
+        "      # ones.\n"
+        "      - uses: actions/checkout@v5\n"
+        "        with:\n"
+        "          fetch-depth: 0\n"
+        "      - uses: astral-sh/setup-uv@v7\n"
+        "        with:\n"
+        "          enable-cache: true\n"
+        "\n"
+        '      - run: bin/check-process --push --before "$BEFORE" --after "$AFTER"\n'
+        "        env:\n"
+        "          BEFORE: ${{ github.event.before }}\n"
+        "          AFTER: ${{ github.event.after }}\n"
+    )
+
+
+def workflow_files(answers: dict[str, str]) -> dict[str, str]:
+    """Both workflows, rendered from the answers."""
+    return {"gates.yml": gates_workflow(answers["pack"]), "process.yml": process_workflow()}
+
+
+def seed_workflows(project: Path, answers: dict[str, str]) -> list[Outcome]:
+    """Write each workflow that is absent, and report the rest as present."""
+    return _seed_once(project, WORKFLOWS_DIR, workflow_files(answers))
+
+
+def plan_workflows(project: Path) -> list[Outcome]:
+    """Which workflows a write would seed, writing none."""
+    return _plan_once(project, WORKFLOWS_DIR, WORKFLOW_FILES)
+
+
+# ---------------------------------------------------------------------------
 # The command
 
 
@@ -581,7 +808,14 @@ def default_phase(project: Path) -> str:
     return "building" if done.returncode == 0 else "shaping"
 
 
-def report(project: Path, files: list[Outcome], team: list[Outcome], route: Outcome, dry: bool) -> None:
+def report(
+    project: Path,
+    files: list[Outcome],
+    team: list[Outcome],
+    flows: list[Outcome],
+    route: Outcome,
+    dry: bool,
+) -> None:
     """Name every file and both sides of every kept edit.
 
     A second file nobody was told about is a file nobody finds, so a kept line
@@ -596,6 +830,9 @@ def report(project: Path, files: list[Outcome], team: list[Outcome], route: Outc
         print(line)
     print(f"\nteam     {project / TEAM_DIR}")
     for row in team:
+        print(f"  {row.status:<9} {row.rel}")
+    print(f"\nworkflow {project / WORKFLOWS_DIR}")
+    for row in flows:
         print(f"  {row.status:<9} {row.rel}")
     print(f"\nrouter   {project / ROUTER_REL}")
     print(f"  {route.status:<9} {route.rel}")
@@ -645,8 +882,14 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{project} is not a directory.", file=sys.stderr)
         return 2
 
-    needs_team = not (project / TEAM_DIR / "gates.toml").is_file()
-    if args.write and needs_team and not args.pack:
+    # The gate list and the gates workflow are both rendered from the pack, and
+    # a project adopted before the workflow existed has one and not the other.
+    # Asking again is one flag; a workflow rendered from a defaulted `none`
+    # installs no pnpm and leaves a typescript project's gates unrunnable.
+    needs_pack = not (project / TEAM_DIR / "gates.toml").is_file() or not (
+        project / WORKFLOWS_DIR / "gates.yml"
+    ).is_file()
+    if args.write and needs_pack and not args.pack:
         # The one answer that cannot be inferred. Guessing python from a
         # `pyproject.toml` gets a project with a `web/` half wrong, and the
         # wrong gate list is the failure this refuses to risk.
@@ -668,12 +911,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.write:
         files = write(args.template, project)
         team = seed_team(project, answers)
+        flows = seed_workflows(project, answers)
         route = seed_router(args.template, project, answers)
     else:
         files = plan(args.template, project)
         team = plan_team(project)
+        flows = plan_workflows(project)
         route = plan_router(project)
-    report(project, files, team, route, dry=not args.write)
+    report(project, files, team, flows, route, dry=not args.write)
     return 0
 
 

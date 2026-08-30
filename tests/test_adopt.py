@@ -499,3 +499,105 @@ class TestTheCommandOnAnExistingRouter:
         assert (project / "CLAUDE.md").read_text() == "# theirs\n"
         assert (project / ".agentkit" / "team.md").is_file()
         assert (project / STYLE).is_file()
+
+
+class TestTheWorkflows:
+    """`.github/workflows/`, the only thing that runs any of this unprompted.
+
+    The seeded gates workflow names no gate. Every step of this repository's
+    own file used to be `bin/verify <name>`, and a copy of it in a project
+    seeded from the python pack failed on step two with `No gate named probes`,
+    measured 2026-08-29.
+    """
+
+    @pytest.mark.parametrize("pack", sorted(adopt.PACKS))
+    def test_the_gates_workflow_names_no_gate(self, pack):
+        body = adopt.gates_workflow(pack)
+        for name, _, _ in adopt.PACKS[pack]:
+            assert f"bin/verify {name}" not in body
+        assert "      - run: bin/verify\n" in body
+
+    @pytest.mark.parametrize("pack", sorted(adopt.PACKS))
+    def test_every_pack_installs_uv(self, pack):
+        """`bin/verify` runs under `uv run --script` whatever the gates name."""
+        assert "astral-sh/setup-uv" in adopt.gates_workflow(pack)
+
+    @pytest.mark.parametrize("pack", sorted(adopt.PACKS))
+    def test_a_pnpm_gate_gets_node_and_an_install_where_it_runs(self, pack):
+        body = adopt.gates_workflow(pack)
+        where = adopt.pnpm_dirs(pack)
+        assert ("pnpm/action-setup" in body) == bool(where)
+        assert body.count("pnpm install") == len(where)
+        for directory in where:
+            if directory != ".":
+                assert f"working-directory: {directory}" in body
+
+    def test_the_pnpm_install_follows_the_gates_working_directory(self):
+        """The `python+typescript` pack runs its two pnpm gates in `web/`."""
+        assert adopt.pnpm_dirs("python+typescript") == ["web"]
+        assert "        working-directory: web\n" in adopt.gates_workflow("python+typescript")
+
+    def test_both_land_in_an_empty_project(self, project):
+        rows = adopt.seed_workflows(project, ANSWERS)
+        assert statuses(rows) == {
+            ".github/workflows/gates.yml": adopt.SEEDED,
+            ".github/workflows/process.yml": adopt.SEEDED,
+        }
+
+    def test_a_rerun_leaves_an_edited_workflow_alone(self, project):
+        """A replaced workflow leaves the project's edit in a `.local` GitHub never runs."""
+        adopt.seed_workflows(project, ANSWERS)
+        edited = project / ".github" / "workflows" / "gates.yml"
+        edited.write_text("# ours\n")
+        rows = adopt.seed_workflows(project, ANSWERS)
+        assert statuses(rows)[".github/workflows/gates.yml"] == adopt.PRESENT
+        assert edited.read_text() == "# ours\n"
+        assert not list(project.rglob("*.local"))
+
+    def test_they_are_never_in_the_manifest(self, template, project):
+        adopt.write(template, project)
+        adopt.seed_workflows(project, ANSWERS)
+        assert not any(rel.startswith(".github/") for rel in adopt.manifest(project))
+
+    def test_a_plan_writes_neither(self, project):
+        assert {row.status for row in adopt.plan_workflows(project)} == {adopt.SEEDED}
+        assert not (project / ".github").exists()
+
+    def test_the_plan_names_what_a_write_seeds(self, project):
+        planned = {row.rel for row in adopt.plan_workflows(project)}
+        assert planned == {f"{adopt.WORKFLOWS_DIR}/{name}" for name in adopt.workflow_files(ANSWERS)}
+
+    def test_the_process_workflow_says_what_an_unconfigured_project_gets(self):
+        """`.agentkit/process.toml` is never seeded, so the file has to say so."""
+        body = adopt.workflow_files(ANSWERS)["process.yml"]
+        assert ".agentkit/process.toml" in body
+        assert "absent" in body
+        assert "bin/check-process" in body
+
+    def test_a_write_seeds_both_and_the_report_names_them(self, template, project, capsys):
+        adopt.main([str(project), "--write", "--pack", "python", "--template", str(template)])
+        out = capsys.readouterr().out
+        for name in adopt.WORKFLOW_FILES:
+            assert (project / ".github" / "workflows" / name).is_file()
+            assert f"{adopt.WORKFLOWS_DIR}/{name}" in out
+
+    def test_a_rerun_missing_only_the_workflow_asks_for_the_pack_again(self, template, project, capsys):
+        """A workflow rendered from a defaulted `none` installs no pnpm."""
+        adopt.main([str(project), "--write", "--pack", "typescript", "--template", str(template)])
+        import shutil
+
+        shutil.rmtree(project / ".github")
+        capsys.readouterr()
+        assert adopt.main([str(project), "--write", "--template", str(template)]) == 2
+        assert "--pack is required" in capsys.readouterr().err
+        assert not (project / ".github").exists()
+
+
+class TestWhatThePlanKnowsWithoutTheAnswers:
+    """A plan renders nothing, so it holds a name list the renderer has to match."""
+
+    def test_the_team_file_names_agree(self):
+        assert set(adopt.TEAM_FILES) == set(adopt.team_files(ANSWERS))
+
+    def test_the_workflow_names_agree(self):
+        assert set(adopt.WORKFLOW_FILES) == set(adopt.workflow_files(ANSWERS))
