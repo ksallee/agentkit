@@ -12,6 +12,7 @@ import hashlib
 import importlib.util
 import json
 import re
+import subprocess
 import sys
 import tomllib
 from importlib.machinery import SourceFileLoader
@@ -245,53 +246,84 @@ class TestTheSeededProbe:
 
 
 class TestTheSeededTest:
-    """`tests/test_scaffolding.py`, the one file under `tests/` named on its own line.
+    """One scaffolding test per language, seeded to the packs that run it.
 
-    A project's `test` gate runs `uv run pytest`, and pytest exits non-zero
-    when it collects nothing, so a project with no test directory failed a gate
-    of its own on the day it was adopted (#108). The seeded file asserts what an
-    adopted project has, so the green says the scaffolding is sound.
+    A project's `test` gate exits non-zero when it collects nothing, so a
+    project with no test directory failed a gate of its own on the day it was
+    adopted: `uv run pytest` on #108, `pnpm test` on #112. Each seeded file
+    asserts what an adopted project has, so the green says the scaffolding is
+    sound.
     """
 
-    def test_the_scaffolding_test_seeds(self):
-        assert "tests/test_scaffolding.py" in {rel for rel, _ in adopt.seeds(ROOT)}
+    def test_the_python_packs_take_the_pytest_file(self):
+        for pack in ("python", "python+typescript"):
+            assert "tests/test_scaffolding.py" in {rel for rel, _ in adopt.seeds(ROOT, pack)}, pack
+
+    def test_the_typescript_pack_takes_the_node_file_and_no_pytest_file(self):
+        seeded = {rel for rel, _ in adopt.seeds(ROOT, "typescript")}
+        assert "tests/scaffolding.test.mjs" in seeded
+        assert "tests/test_scaffolding.py" not in seeded
+
+    def test_the_both_pack_takes_the_node_file_under_web(self):
+        """The pnpm gates run in `web/`, and a root `package.json` answers for nothing."""
+        seeded = {rel for rel, _ in adopt.seeds(ROOT, "python+typescript")}
+        assert "web/tests/scaffolding.test.mjs" in seeded
+        assert "tests/scaffolding.test.mjs" not in seeded
+
+    def test_the_none_pack_takes_neither(self):
+        seeded = {rel for rel, _ in adopt.seeds(ROOT, "none")}
+        assert not seeded & {"tests/test_scaffolding.py", "tests/scaffolding.test.mjs"}
 
     def test_no_other_file_under_tests_seeds(self):
-        """A `/` typed onto that entry would carry this repository's own suite.
+        """A `/` typed onto either entry would carry this repository's own suite.
 
         `tests/test_adopt.py` reads `bin/adopt`, which no project has, so every
-        sibling of the seeded file fails in the first project that took it.
+        sibling of the two seeded files fails in the first project that took it.
         """
         others = {
             p.relative_to(ROOT).as_posix()
             for p in (ROOT / "tests").rglob("*")
             if p.is_file() and "__pycache__" not in p.parts
         }
-        others -= {"tests/test_scaffolding.py"}
+        others -= {"tests/test_scaffolding.py", "tests/scaffolding.test.mjs"}
         assert "tests/test_adopt.py" in others, "this asserts nothing without a sibling"
         for pack in adopt.PACKS:
-            assert not others & {rel for rel, _ in adopt.seeds(ROOT, pack)}, pack
+            landed = {rel for rel, _ in adopt.seeds(ROOT, pack)}
+            sources = {src.relative_to(ROOT).as_posix() for _, src in adopt.seeds(ROOT, pack)}
+            assert not others & (landed | sources), pack
 
-    def test_the_note_explains_the_one_entry(self):
+    def test_the_note_explains_both_entries(self):
         declared = json.loads((ROOT / "seeds.json").read_text())
         assert "tests/test_scaffolding.py" in declared["note"]
+        assert "tests/scaffolding.test.mjs" in declared["note"]
 
-    def test_the_python_packs_run_it(self):
-        for pack in ("python", "python+typescript"):
-            commands = {command for _, command, _ in adopt.PACKS[pack]}
-            assert "uv run pytest" in commands, pack
+    def test_each_pack_declares_the_gate_that_runs_its_file(self):
+        wanted = {
+            "python": "uv run pytest",
+            "typescript": "pnpm test",
+            "python+typescript": "pnpm test",
+        }
+        for pack, command in wanted.items():
+            commands = {declared for _, declared, _ in adopt.PACKS[pack]}
+            assert command in commands, pack
 
 
 class TestTheSeededLintConfig:
-    """`ruff.toml`, seeded because the python packs declare a command that reads it.
+    """`ruff.toml`, seeded to the packs that declare a command reading it.
 
     `uvx ruff check .` with no config in reach runs under ruff's own default
     set, which reported seven errors on a fresh adoption, every one of them in
     a file this template shipped (#108).
     """
 
-    def test_the_config_seeds(self):
-        assert "ruff.toml" in {rel for rel, _ in adopt.seeds(ROOT)}
+    def test_the_config_seeds_to_the_python_packs(self):
+        for pack in ("python", "python+typescript"):
+            assert "ruff.toml" in {rel for rel, _ in adopt.seeds(ROOT, pack)}, pack
+
+    def test_no_other_pack_receives_it(self):
+        """A node project reads no ruff config, and a `none` project runs no gate."""
+        for pack in ("typescript", "none"):
+            assert "ruff.toml" not in {rel for rel, _ in adopt.seeds(ROOT, pack)}, pack
 
     def test_the_header_does_not_deny_it(self):
         """The header asserted the opposite until the manifest started claiming it."""
@@ -305,6 +337,107 @@ class TestTheSeededLintConfig:
     def test_the_note_explains_the_entry(self):
         declared = json.loads((ROOT / "seeds.json").read_text())
         assert "ruff.toml" in declared["note"]
+
+
+class TestTheSeededNodeProject:
+    """`package.json` and `tsconfig.json`, seeded to the packs whose gates run pnpm.
+
+    `pnpm check` and `pnpm test` on a project with no manifest reported
+    `ERR_PNPM_NO_IMPORTER_MANIFEST_FOUND` and failed two of three gates on the
+    day the project was adopted (#112).
+    """
+
+    @staticmethod
+    def declared(pack):
+        return {rel for rel, _ in adopt.seeds(ROOT, pack)}
+
+    def test_the_typescript_pack_takes_both_at_the_root(self):
+        assert {"package.json", "tsconfig.json"} <= self.declared("typescript")
+
+    def test_the_both_pack_takes_them_where_its_gates_run(self):
+        seeded = self.declared("python+typescript")
+        assert {"web/package.json", "web/tsconfig.json"} <= seeded
+        assert not seeded & {"package.json", "tsconfig.json"}
+
+    def test_a_pack_with_no_pnpm_gate_takes_neither(self):
+        for pack in ("python", "none"):
+            assert not self.declared(pack) & {"package.json", "tsconfig.json"}, pack
+
+    def test_one_set_of_bytes_serves_both_packs(self):
+        """The `web/` copies are a landing, so nothing here can drift from anything."""
+        sources = dict(adopt.seeds(ROOT, "typescript")) | dict(
+            adopt.seeds(ROOT, "python+typescript")
+        )
+        assert sources["package.json"] == sources["web/package.json"]
+        assert sources["tsconfig.json"] == sources["web/tsconfig.json"]
+
+    def test_it_declares_every_script_a_gate_invokes(self):
+        """The seeded test asserts this from inside a project, and this from outside."""
+        scripts = json.loads((ROOT / "package.json").read_text())["scripts"]
+        for pack in ("typescript", "python+typescript"):
+            for _, command, _ in adopt.PACKS[pack]:
+                head, _, script = command.partition(" ")
+                if head == "pnpm":
+                    assert script in scripts, f"{pack} runs `{command}` and package.json cannot"
+
+    def test_the_check_gate_has_something_to_check(self):
+        """`tsc --noEmit` over an empty `include` exits on TS18003 and never on the code."""
+        config = json.loads((ROOT / "tsconfig.json").read_text())
+        assert config["compilerOptions"]["checkJs"] is True
+        assert any(pattern.startswith("tests/") for pattern in config["include"])
+
+    def test_the_note_explains_the_entries(self):
+        declared = json.loads((ROOT / "seeds.json").read_text())
+        assert "package.json" in declared["note"]
+        assert "tsconfig.json" in declared["note"]
+
+
+class TestALandedSeed:
+    """A `per_pack` object names where a file lands, and a list keeps the template path."""
+
+    @staticmethod
+    def declare(template, per_pack, pack):
+        (template / "seeds.json").write_text(json.dumps({"tracked": [], "per_pack": per_pack}))
+        return dict(adopt.seeds(template, pack))
+
+    def test_a_list_lands_a_file_where_the_template_holds_it(self, template):
+        landed = self.declare(template, {"python": [STYLE], "none": []}, "python")
+        assert set(landed) == {STYLE}
+        assert landed[STYLE] == template / STYLE
+
+    def test_an_object_lands_it_where_the_value_says(self, template):
+        landed = self.declare(template, {"python": {STYLE: "web/STYLE.md"}, "none": []}, "python")
+        assert set(landed) == {"web/STYLE.md"}
+        assert landed["web/STYLE.md"] == template / STYLE
+
+    def test_a_landed_file_is_written_to_its_landing(self, template, project):
+        self.declare(template, {"python": {STYLE: "web/STYLE.md"}, "none": []}, "python")
+        adopt.write(template, project, "python")
+        assert (project / "web/STYLE.md").read_bytes() == (template / STYLE).read_bytes()
+        assert not (project / STYLE).exists()
+
+    def test_a_landed_file_is_recorded_under_its_landing(self, template, project):
+        self.declare(template, {"python": {STYLE: "web/STYLE.md"}, "none": []}, "python")
+        adopt.write(template, project, "python")
+        assert "web/STYLE.md" in adopt.manifest(project)
+
+    def test_a_rerun_over_a_landed_file_writes_nothing(self, template, project):
+        self.declare(template, {"python": {STYLE: "web/STYLE.md"}, "none": []}, "python")
+        adopt.write(template, project, "python")
+        again = adopt.write(template, project, "python")
+        assert [result.status for result in again] == [adopt.UNCHANGED]
+
+    def test_an_object_withholds_its_template_path_from_the_expansion(self, template):
+        """Withholding reads the keys, so a landed file is not seeded twice."""
+        (template / "seeds.json").write_text(
+            json.dumps(
+                {
+                    "tracked": ["docs/development/"],
+                    "per_pack": {"python": {STYLE: "web/STYLE.md"}, "none": []},
+                }
+            )
+        )
+        assert STYLE not in {rel for rel, _ in adopt.seeds(template, "none")}
 
 
 class TestTheGateRunAfterAFirstWrite:
@@ -386,6 +519,91 @@ class TestTheGateRunAfterAFirstWrite:
             [str(project), "--write", "--pack", "python", "--no-gates", "--template", str(template)]
         )
         assert "gates    " not in capsys.readouterr().out
+
+
+class TestTheInstallBeforeTheGateRun:
+    """A pnpm pack installs before its gates run, and a python pack installs nothing.
+
+    `pnpm check` runs `tsc`, which resolves from `node_modules/.bin`, so
+    without an install the gate reports a missing binary and says nothing about
+    the project's code (#112). The adoption is written whatever the install
+    does, so a failure is printed and the gates run anyway.
+    """
+
+    @staticmethod
+    def calls(monkeypatch):
+        """Every `pnpm install` this run would make, without running one.
+
+        The git calls `_record` and `default_phase` make go through the same
+        function, so only the pnpm ones are collected.
+        """
+        seen = []
+
+        def record(argv, **kwargs):
+            if argv[0] == "pnpm":
+                seen.append((argv, kwargs.get("cwd")))
+            return subprocess.CompletedProcess(argv, 0, "", "")
+
+        monkeypatch.setattr(adopt.subprocess, "run", record)
+        return seen
+
+    def test_a_python_pack_installs_nothing(self, project, monkeypatch):
+        seen = self.calls(monkeypatch)
+        adopt.install_pnpm(project, "python")
+        assert seen == []
+
+    def test_a_typescript_pack_installs_at_the_root(self, project, monkeypatch):
+        seen = self.calls(monkeypatch)
+        adopt.install_pnpm(project, "typescript")
+        assert seen == [(["pnpm", "install"], project)]
+
+    def test_the_both_pack_installs_where_its_gates_run(self, project, monkeypatch):
+        (project / "web").mkdir()
+        seen = self.calls(monkeypatch)
+        adopt.install_pnpm(project, "python+typescript")
+        assert seen == [(["pnpm", "install"], project / "web")]
+
+    def test_an_absent_directory_installs_nothing_and_says_so(self, project, monkeypatch, capsys):
+        seen = self.calls(monkeypatch)
+        adopt.install_pnpm(project, "python+typescript")
+        assert seen == []
+        assert "no web/ to install into" in capsys.readouterr().out
+
+    def test_a_failed_install_is_printed_and_the_gates_still_run(self, project, monkeypatch, capsys):
+        monkeypatch.setattr(
+            adopt.subprocess,
+            "run",
+            lambda argv, **kwargs: subprocess.CompletedProcess(argv, 1, "", "no network"),
+        )
+        adopt.install_pnpm(project, "typescript")
+        printed = capsys.readouterr().out
+        assert "no network" in printed
+        assert "the gates run anyway" in printed
+
+    def test_a_machine_with_no_pnpm_is_named_and_nothing_installs(self, project, capsys, monkeypatch):
+        """`missing_tools` already reads the gate commands, and pnpm is one of them."""
+        TestTheGateRunAfterAFirstWrite.runner(project, 0)
+        monkeypatch.setattr(adopt.shutil, "which", lambda name: None)
+        seen = self.calls(monkeypatch)
+        assert adopt.run_gates(project, "typescript") == 0
+        assert seen == []
+        assert "nothing ran: this machine has no pnpm, uv" in capsys.readouterr().out
+
+    def test_the_flag_skips_the_install_with_the_run(self, template, project, capsys, monkeypatch):
+        seen = self.calls(monkeypatch)
+        adopt.main(
+            [
+                str(project),
+                "--write",
+                "--pack",
+                "typescript",
+                "--no-gates",
+                "--template",
+                str(template),
+            ]
+        )
+        assert seen == []
+        assert "pnpm install" not in capsys.readouterr().out
 
 
 class TestTheRecordedPack:
@@ -1208,6 +1426,21 @@ class TestTheIgnoreFile:
         assert body.rstrip("\n").endswith(adopt.GITIGNORE_END)
         for line in adopt.GITIGNORE_LINES:
             assert f"\n{line}\n" in body
+
+    def test_a_pnpm_pack_ignores_what_its_install_writes(self, project):
+        """A first write runs `pnpm install`, so the directory is there before
+        the adopter's first `git status`. One line covers `web/node_modules/`
+        too, because git matches the pattern at any depth."""
+        for pack in ("typescript", "python+typescript"):
+            assert "node_modules/" in adopt.gitignore_block(pack), pack
+
+    def test_a_pack_that_installs_nothing_names_no_node_modules(self, project):
+        for pack in ("python", "none"):
+            assert "node_modules/" not in adopt.gitignore_block(pack), pack
+
+    def test_the_lockfile_stays_tracked(self, project):
+        """CI installs from it, and an ignored lockfile is an install nobody can repeat."""
+        assert "pnpm-lock" not in adopt.gitignore_block("typescript")
 
     def test_the_projects_own_lines_survive(self, project):
         theirs = "node_modules/\n*.log\n"

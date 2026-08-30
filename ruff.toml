@@ -1,12 +1,14 @@
-# The lint rules, here and in every project seeded from here. `seeds.json`
-# tracks this file, so a project owns its copy and a rerun keeps an edit to it
-# as `ruff.toml.local`, the way it keeps any tracked file's.
+# The lint rules, here and in every project seeded from a python pack.
+# `seeds.json` names this file under `per_pack`, so a project owns its copy and
+# a rerun keeps an edit to it as `ruff.toml.local`, the way it keeps any seeded
+# file's.
 #
-# It travels with the command that reads it. The python packs declare `uvx ruff
-# check .`, and ruff with no config in reach applies its own default set, which
-# is broader than this one and is whatever the installed version has decided it
-# is. A project seeded without this file points that set at files agentkit
-# wrote and cannot be asked to fix (#108).
+# It travels with the command that reads it, and with no other pack. The python
+# packs declare `uvx ruff check .`, and ruff with no config in reach applies its
+# own default set, which is broader than this one and is whatever the installed
+# version has decided it is. A project seeded without this file points that set
+# at files agentkit wrote and cannot be asked to fix (#108). A node project
+# declares no such command, so it receives no config for one (#112).
 #
 # The selection is the one mac-hours uses, so code moving between the two is
 # judged once. A `ruff.toml` and not a `pyproject.toml`, because neither this

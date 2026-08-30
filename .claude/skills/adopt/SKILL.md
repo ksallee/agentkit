@@ -65,17 +65,24 @@ wrong. Ask.
 
 **A first write ends by running the gate list it seeded.** `bin/adopt` invokes
 the project's own `bin/verify` and prints its table, so the operator learns on
-day one whether the scaffolding holds together. Three things come with that
-run:
+day one whether the scaffolding holds together. Four things come with that run:
 
 - A red gate leaves `bin/adopt` at 0. The files are written and the manifest
   records them whatever the gates say, and an exit code saying otherwise would
   read as a failed write.
-- A machine with no `uv` or `uvx` is named and no gate runs. `uvx ruff` on a
-  machine without uv fails under a gate name and says nothing about the
-  machine, and a first adoption is where a reader has least basis for telling
-  the two apart.
-- A rerun runs nothing, and `--no-gates` skips the run on a first write.
+- A machine missing a tool the pack names is told which one, and no gate runs.
+  `uvx ruff` on a machine without uv fails under a gate name and says nothing
+  about the machine, and a first adoption is where a reader has least basis for
+  telling the two apart. `pnpm` is checked the same way for the two packs that
+  name it.
+- **A pack whose gates run pnpm installs first**, in every directory a gate
+  declares: the root for `typescript`, `web/` for `python+typescript`. The
+  `check` gate runs `tsc`, which resolves from `node_modules/.bin`, so without
+  the install it reports a missing binary and nothing about the project. It
+  added 0.8s to an adoption on a machine that had installed typescript before
+  and 1.6s into an empty pnpm store, measured 2026-08-30 on #112 by
+  `probes/node_gates.py`. A failed install is printed and the gates run anyway.
+- A rerun runs nothing, and `--no-gates` skips the install with the run.
 
 The seeded gate list is still a starting point. Correct `.agentkit/gates.toml`
 where a gate fails for the wrong reason. The seeded workflow runs the same
@@ -252,15 +259,19 @@ Then, in the project:
 
 ```sh
 git status --short
-git add CLAUDE.md ruff.toml .agentkit .claude .github bin design docs probes \
-  tests/test_scaffolding.py
+git add CLAUDE.md .agentkit .claude .github bin design docs
+git add ruff.toml probes tests/test_scaffolding.py          # a python pack
+git add package.json tsconfig.json pnpm-lock.yaml tests/scaffolding.test.mjs
 git commit
 ```
 
 The manifest is committed, so both people see the same adoption state. The
 paths are named one by one because the gate run leaves whatever the gates
 cache: in a python project `__pycache__/`, `.pytest_cache/` and `.ruff_cache/`,
-and the ignores for those three are the project's own to write.
+and the ignores for those three are the project's own to write. The third line
+is the `typescript` pack's, and `python+typescript` takes the same four under
+`web/`, where its pnpm gates run. `pnpm-lock.yaml` is committed because CI
+installs from it; `node_modules/` is in the ignore block.
 
 ## Updating later
 
