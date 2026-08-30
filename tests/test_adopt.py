@@ -33,14 +33,17 @@ adopt = importlib.util.module_from_spec(_spec)
 sys.modules["adopt"] = adopt
 _loader.exec_module(adopt)
 
-# The five answers, as `main` assembles them. One constant, because the router
-# and the team layer are rendered from the same dict.
+# The six answers, as `main` assembles them. One constant, because the router
+# and the team layer are rendered from the same dict. `surface` is empty here
+# because that is what `main` passes when nobody answered `--surface`, and the
+# team layer says so in place of a value.
 ANSWERS = {
     "pack": "python",
     "name": "demo",
     "summary": "A project.",
     "phase": "building",
     "merge": "Both of us review.",
+    "surface": "",
 }
 
 SKILL = ".claude/skills/demo/SKILL.md"
@@ -1338,6 +1341,36 @@ class TestTheCommand:
         assert "# project" in (project / ".agentkit" / "team.md").read_text()
 
 
+class TestThePackTheOutputNames:
+    """One header line on the plan and on the write, naming the pack rendered.
+
+    `per_pack` gives each pack a file set no other pack has, so a plan that
+    names no pack is approved as though it were every pack's and a write under
+    another one lands a different set (#164).
+    """
+
+    def flags(self, template):
+        return ["--template", str(template), "--no-gates", "--no-labels"]
+
+    def test_a_plan_that_was_given_no_pack_names_the_one_it_assumed(self, template, project, capsys):
+        adopt.main([str(project), *self.flags(template)])
+        assert "pack     none, the default." in capsys.readouterr().out
+
+    def test_a_plan_names_the_pack_it_was_given(self, template, project, capsys):
+        adopt.main([str(project), "--pack", "typescript", *self.flags(template)])
+        assert "pack     typescript, given with --pack." in capsys.readouterr().out
+
+    def test_a_write_names_its_pack(self, template, project, capsys):
+        adopt.main([str(project), "--write", "--pack", "typescript", *self.flags(template)])
+        assert "pack     typescript, given with --pack." in capsys.readouterr().out
+
+    def test_a_rerun_that_names_no_pack_reports_the_recorded_one(self, template, project, capsys):
+        adopt.main([str(project), "--write", "--pack", "python", *self.flags(template)])
+        capsys.readouterr()
+        adopt.main([str(project), *self.flags(template)])
+        assert "pack     python, recorded by the last adoption." in capsys.readouterr().out
+
+
 class TestThePhaseDefault:
     def test_a_directory_with_no_history_is_shaping(self, project):
         assert adopt.default_phase(project) == "shaping"
@@ -1375,6 +1408,29 @@ class TestTheDesignSettings:
         body = (project / ".agentkit" / "team.md").read_text()
         assert "| surface | canvas, file, none |" in body
         assert "`surface` waits until somebody picks one." in body
+
+    def test_an_answered_surface_is_written_where_the_question_was(self, project):
+        """#162: the skill asks for it in its first call and nothing recorded it."""
+        adopt.seed_team(project, {**ANSWERS, "surface": "file, design/"})
+        body = (project / ".agentkit" / "team.md").read_text()
+        assert "**demo: surface `file, design/`.**" in body
+        assert "waits until somebody picks one" not in body
+
+    def test_the_flag_carries_the_answer_into_the_team_file(self, template, project):
+        adopt.main(
+            [str(project), "--write", "--pack", "none", "--surface", "file, design/",
+             "--template", str(template), "--no-gates", "--no-labels"]
+        )
+        body = (project / ".agentkit" / "team.md").read_text()
+        assert "surface `file, design/`" in body
+        assert "waits until somebody picks one" not in body
+
+    def test_a_write_with_no_flag_leaves_the_question_open(self, template, project):
+        adopt.main(
+            [str(project), "--write", "--pack", "none",
+             "--template", str(template), "--no-gates", "--no-labels"]
+        )
+        assert "`surface` waits until somebody picks one." in (project / ".agentkit" / "team.md").read_text()
 
     def test_the_command_names_no_references_flag(self, template, project):
         """#123: the flag came out with the setting, and argparse would accept

@@ -169,7 +169,7 @@ times in one adoption before anybody said what they were.
 ## Run the plan first, always
 
 ```sh
-python3 bin/adopt /path/to/project
+python3 bin/adopt /path/to/project --pack <the answer>
 ```
 
 Run it from the agentkit checkout, with the target as the path. That writes
