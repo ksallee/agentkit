@@ -81,6 +81,19 @@ IGNORED_DIRS = ("__pycache__", ".git")
 IGNORED_NAMES = (".DS_Store",)
 IGNORED_SUFFIXES = (".pyc",)
 
+# The second list in `seeds.json`: real template files a directory entry expands
+# over and no project receives. The three ignores above answer whether a file is
+# part of any template on any machine, and this answers whether a file that is
+# belongs to the project. Keeping them apart is what lets a reader looking for
+# why a skill went missing find one list with the reason on it.
+#
+# The `_KEY` suffix is load-bearing. `tests/test_skills.py` reads every status
+# this module declares as the module level string whose name is its own value
+# uppercased, and asserts each one has a row in the outcome table the `adopt`
+# skill carries. A constant named `TEMPLATE_ONLY` would be read as a status
+# nothing can report.
+TEMPLATE_ONLY_KEY = "template_only"
+
 # What happened to one file. `unchanged` wrote nothing. `kept` is the only
 # status that leaves a second file behind.
 #
@@ -158,25 +171,42 @@ def seeds(template: Path) -> list[tuple[str, Path]]:
     on another branch joins the seed list when it lands. Sorting is what makes
     the output and the manifest stable between runs.
 
-    A missing entry raises. A seed list naming a file nobody wrote is a
-    template that would adopt differently depending on which files happened to
-    exist, and failing at that point costs one line in `seeds.json`.
+    `template_only` subtracts from that expansion. It holds this template's own
+    tools, the ones that drive `bin/adopt`, which `seeds.json` keeps out of a
+    project by naming the `bin/` entries one by one. A path named on its own
+    line in `tracked` is a decision somebody typed and seeds anyway.
+
+    A missing entry raises, on either list. A seed list naming a file nobody
+    wrote is a template that would adopt differently depending on which files
+    happened to exist, and an exclusion naming nothing stopped excluding
+    whatever it was written for. Failing at that point costs one line in
+    `seeds.json`.
     """
-    listed = json.loads((template / SEEDS).read_text())["tracked"]
+    declared = json.loads((template / SEEDS).read_text())
+    withheld = [_named(template, entry) for entry in declared.get(TEMPLATE_ONLY_KEY, [])]
     found: list[tuple[str, Path]] = []
-    for entry in listed:
-        source = template / entry
+    for entry in declared["tracked"]:
+        source = _named(template, entry)
         if entry.endswith("/"):
-            if not source.is_dir():
-                raise SystemExit(f"seeds.json names {entry}, which is not a directory in {template}")
             found += [
-                (p.relative_to(template).as_posix(), p) for p in source.rglob("*") if p.is_file() and _carried(p)
+                (p.relative_to(template).as_posix(), p)
+                for p in source.rglob("*")
+                if p.is_file() and _carried(p) and not _withheld(p, withheld)
             ]
         else:
-            if not source.is_file():
-                raise SystemExit(f"seeds.json names {entry}, which is not a file in {template}")
             found.append((entry, source))
     return sorted(found)
+
+
+def _named(template: Path, entry: str) -> Path:
+    """The template path one `seeds.json` entry names, raising when it is absent."""
+    source = template / entry
+    if entry.endswith("/"):
+        if not source.is_dir():
+            raise SystemExit(f"seeds.json names {entry}, which is not a directory in {template}")
+    elif not source.is_file():
+        raise SystemExit(f"seeds.json names {entry}, which is not a file in {template}")
+    return source
 
 
 def _carried(path: Path) -> bool:
@@ -184,6 +214,11 @@ def _carried(path: Path) -> bool:
     if any(part in IGNORED_DIRS for part in path.parts):
         return False
     return path.name not in IGNORED_NAMES and path.suffix not in IGNORED_SUFFIXES
+
+
+def _withheld(path: Path, withheld: Collection[Path]) -> bool:
+    """Whether a `template_only` entry covers this file, by name or by directory."""
+    return any(path == held or held in path.parents for held in withheld)
 
 
 def manifest(project: Path) -> dict[str, str]:
@@ -572,7 +607,11 @@ somebody clones. No plugin, no install step.
 `pick-work`, as `/work`, says what to do next. `wrap-up`, as `/done`, ends a
 session: the tree is left clean, the prose gets read against STYLE.md, and
 every preference the session stated is written into the file that reads it
-next. `adopt` updates this scaffolding from the template it came from.
+next.
+
+Updating this scaffolding runs `bin/adopt` from the agentkit checkout it came
+from. That tool, the `adopt` skill driving it and the `/agentkit` command are
+seeded nowhere, so this project holds none of the three.
 
 The team layer is data that skills read. Skill precedence doesn't exist: two
 skills of one name both load.

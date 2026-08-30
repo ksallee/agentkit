@@ -91,6 +91,98 @@ class TestTheSeedList:
         assert "stale" not in " ".join(rel for rel, _ in adopt.seeds(template))
 
 
+class TestTheTemplatesOwnTools:
+    """`template_only`, the second list: real files a directory entry expands over.
+
+    `.claude/skills/` and `.claude/commands/` are directory entries, so the
+    `adopt` skill and the `/agentkit` command reached every project by
+    expansion and offered it a `bin/adopt` that `seeds.json` withholds. Naming
+    every other skill one by one instead drops a skill from every project the
+    moment somebody adds one here.
+    """
+
+    @staticmethod
+    def declare(template, tracked, withheld):
+        (template / "seeds.json").write_text(json.dumps({"tracked": tracked, "template_only": withheld}))
+        return {rel for rel, _ in adopt.seeds(template)}
+
+    def test_a_withheld_directory_seeds_none_of_its_files(self, template):
+        assert self.declare(template, [".claude/skills/"], [".claude/skills/demo/"]) == set()
+
+    def test_a_withheld_file_is_the_only_one_dropped(self, template):
+        rels = self.declare(template, [".claude/skills/"], [".claude/skills/demo/reference.md"])
+        assert rels == {SKILL}
+
+    def test_an_entry_tracked_by_name_seeds_anyway(self, template):
+        """A path somebody typed into `tracked` is a decision, and it wins."""
+        rels = self.declare(template, [STYLE], [STYLE])
+        assert rels == {STYLE}
+
+    def test_an_exclusion_naming_nothing_stops_the_run(self, template):
+        """A stale exclusion silently stops excluding, which is the failure to catch."""
+        with pytest.raises(SystemExit) as raised:
+            self.declare(template, [STYLE], ["docs/GONE.md"])
+        assert "docs/GONE.md" in str(raised.value)
+
+    def test_an_absent_list_leaves_every_expansion_alone(self, template):
+        (template / "seeds.json").write_text(json.dumps({"tracked": [".claude/skills/"]}))
+        assert {rel for rel, _ in adopt.seeds(template)} == {SKILL, SKILL.replace("SKILL.md", "reference.md")}
+
+    def test_this_repository_withholds_the_adopt_skill_and_its_command(self):
+        """The live defect: a project got a skill driving a tool it does not have."""
+        seeded = {rel for rel, _ in adopt.seeds(ROOT)}
+        assert ".claude/skills/adopt/SKILL.md" not in seeded
+        assert ".claude/commands/agentkit.md" not in seeded
+
+    def test_this_repository_still_seeds_the_rest_of_both_directories(self):
+        seeded = {rel for rel, _ in adopt.seeds(ROOT)}
+        assert ".claude/commands/work.md" in seeded
+        assert ".claude/skills/pick-work/SKILL.md" in seeded
+
+    def test_the_note_explains_the_list(self):
+        """`seeds.json` is read by somebody deciding what a project should get."""
+        declared = json.loads((ROOT / "seeds.json").read_text())
+        assert "template_only" in declared["note"]
+
+
+class TestAWithheldPathAlreadyInAProject:
+    """The rerun for a project adopted before the exclusion landed.
+
+    Nothing distinguishes a path dropped from `tracked` from one added to
+    `template_only`: both leave a manifest row `seeds()` no longer names, which
+    is the case `plan` reports as `removed`.
+    """
+
+    @pytest.fixture
+    def withheld(self, template, project):
+        """A project holding the demo skill after the template withheld it."""
+        adopt.write(template, project)
+        (template / "seeds.json").write_text(
+            json.dumps({"tracked": [".claude/skills/", STYLE], "template_only": [".claude/skills/demo/"]})
+        )
+        return project / SKILL
+
+    def test_a_plan_names_it_removed(self, template, project, withheld):
+        assert statuses(adopt.plan(template, project))[SKILL] == adopt.REMOVED
+        assert withheld.is_file()
+
+    def test_a_write_deletes_it_and_the_directory_it_emptied(self, template, project, withheld):
+        assert statuses(adopt.write(template, project))[SKILL] == adopt.REMOVED
+        assert not (project / ".claude").exists()
+
+    def test_its_row_goes_with_it(self, template, project, withheld):
+        adopt.write(template, project)
+        assert SKILL not in adopt.manifest(project)
+
+    def test_an_edited_copy_stays_and_is_named(self, template, project, withheld):
+        withheld.write_text("ours now\n")
+        assert statuses(adopt.write(template, project))[SKILL] == adopt.ORPHANED
+        assert withheld.read_text() == "ours now\n"
+
+    def test_everything_still_seeded_is_untouched(self, template, project, withheld):
+        assert statuses(adopt.write(template, project))[STYLE] == adopt.UNCHANGED
+
+
 class TestFirstAdoption:
     def test_every_seeded_file_lands(self, template, project):
         results = adopt.write(template, project)

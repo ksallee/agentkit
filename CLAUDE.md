@@ -95,13 +95,17 @@ Loaded on demand from `.claude/skills/`, committed, available the moment
 somebody clones. No plugin, no install step.
 
 **`adopt`** seeds this scaffolding into a project and updates it later. It is
-how a project gets everything else here.
+how a project gets everything else here, and it stays here. Every adoption runs
+from an agentkit checkout, so `seeds.json` withholds the skill and its command
+from the projects it seeds, the way it withholds `bin/adopt`.
 
-Two skills have a slash command, because a command is the one thing a
-`description` cannot advertise. **`pick-work`**, as `/work`, says what to do
-next. **`wrap-up`**, as `/done`, ends a session: the tree is clean, the prose
-gets read against STYLE.md, and every preference the session stated is written
-into the file that reads it next.
+Three skills have a slash command, because a command is the one thing a
+`description` cannot advertise. **`adopt`**, as `/agentkit`, sets a project up
+or updates one, and reads the rest of the line as free text it says back before
+writing anything. **`pick-work`**, as `/work`, says what to do next.
+**`wrap-up`**, as `/done`, ends a session: the tree is clean, the prose gets
+read against STYLE.md, and every preference the session stated is written into
+the file that reads it next.
 
 The rest are named nowhere. Every `SKILL.md` opens with a `description` written
 to be read at load time, so a list here would be that description again, in a
