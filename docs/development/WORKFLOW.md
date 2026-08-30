@@ -236,10 +236,18 @@ you saw. For anything numeric, say which number you checked by hand and against
 what.
 
 Merge with **squash**, so `main` stays linear at one commit per issue, and
-delete the branch. **Run the merge from the primary clone**, because
-`gh pr merge --delete-branch` does local git work once the server side is done
-and that work assumes a plain checkout. From inside a worktree it fails after
-the merge has already landed.
+delete the branch. **Remove the worktree first**, because `git branch -d`
+refuses a branch any worktree has checked out and the merged branch's own
+worktree is holding it:
+
+```bash
+git worktree remove .claude/worktrees/12-slug
+gh pr merge 12 --squash --delete-branch
+```
+
+Where the merge runs from decides which way it fails, not whether it does. In
+the other order `--delete-branch` fails after the merge has already landed, and
+the remote branch survives; `## Easy to get wrong` carries the recovery.
 
 ### 17. Every gate declared in `.agentkit/gates.toml` passes before you say you are done
 
@@ -398,7 +406,7 @@ gh pr view <n> --json state        # MERGED, whatever the exit code said
 git push origin --delete <branch>  # --delete-branch never got this far
 ```
 
-Rule 16 says to merge from the primary clone, which avoids both. This is here
-for the reader who already has the error in front of them. Three actors hit it
-in one session on 2026-08-30, and each diagnosed it from scratch, because the
-error text appeared nowhere in the repository.
+Rule 16's ordering, the worktree removed before the merge, avoids both. This
+is here for the reader who already has the error in front of them. Four actors
+hit it in one session on 2026-08-30, and each diagnosed it from scratch,
+because the error text appeared nowhere in the repository.
