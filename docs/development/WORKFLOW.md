@@ -151,6 +151,21 @@ worktree per branch keeps two sessions out of each other's working tree, and
 `main` stays checked out in the original clone. The directory is gitignored
 (#47).
 
+**Read `git status` in the clone before you switch, and cut a worktree while it
+is dirty.** `git switch -c` carries every uncommitted file onto the new branch,
+where the next `git add` commits it under your issue number. So the switch
+route belongs to a session alone in a clean tree, and a session that might
+overlap with another one branches by cutting a worktree:
+
+```bash
+git worktree add .claude/worktrees/12-slug -b 12-slug origin/main
+```
+
+A worktree collision announces itself. Carrying another session's files across
+is silent: four agents ran in this clone on 2026-08-30, one swept three files
+belonging to three other sessions into a commit on its own branch, and the
+recovery happened because two of them were reading `git status` closely (#150).
+
 Assignment claims the work. Pushing a branch does not, and with two people and
 an agent each, the same issue gets started twice.
 

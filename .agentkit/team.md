@@ -59,17 +59,8 @@ where that run is tracked, and it stopped being hypothetical on 2026-08-30.
 
 ## Conventions this project settled
 
-**A commit carries two attribution trailers.** Rule 13 sends the question here,
-and nothing in the rules depends on the answer.
-
-```
-Claude-Session: https://claude.ai/code/session_<id>
-Co-authored-by: Claude Opus 5 (1M context) <noreply@anthropic.com>
-```
-
-The agent writes both, and a commit made by hand carries neither. The session
-line is the one path from a merged commit back to the conversation behind it
-once the pull request has scrolled away. No gate checks either line.
+**Commit trailers: rule 13's shipped default, unchanged.** The rule states the
+two lines and this layer overrides nothing about them.
 
 ## Design
 
