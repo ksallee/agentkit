@@ -634,6 +634,240 @@ class TestTheRecordedPack:
         assert "--pack is required" in capsys.readouterr().err
 
 
+def git(root: Path, *args: str) -> subprocess.CompletedProcess:
+    """Run git in `root` with an identity of its own, never the machine's."""
+    env = {
+        "PATH": "/usr/bin:/bin",
+        "HOME": str(root),
+        "GIT_AUTHOR_NAME": "t",
+        "GIT_AUTHOR_EMAIL": "t@t",
+        "GIT_COMMITTER_NAME": "t",
+        "GIT_COMMITTER_EMAIL": "t@t",
+    }
+    return subprocess.run(
+        ["git", "-C", str(root), *args], check=True, capture_output=True, text=True, env=env
+    )
+
+
+@pytest.fixture
+def history(template):
+    """The fixture template as a git repository, with every file committed."""
+    git(template, "init", "-q")
+    git(template, "add", "-A")
+    git(template, "commit", "-qm", "first")
+    return template
+
+
+class TestTheRecordedCommit:
+    """A sha that names bytes the project never received is the one field `--check` rests on.
+
+    An adoption copies the working tree and records `HEAD`, so the two disagree
+    for every run from a checkout with uncommitted changes, and
+    `git show <sha>:<file>` then contradicts the file that landed.
+    """
+
+    def test_a_clean_checkout_records_its_head(self, history, project):
+        adopt.write(history, project)
+        assert adopt.recorded_commit(project) == git(history, "rev-parse", "HEAD").stdout.strip()
+
+    def test_an_uncommitted_change_marks_the_sha(self, history, project):
+        (history / STYLE).write_text("moved on\n")
+        adopt.write(history, project)
+        assert adopt.recorded_commit(project).endswith(adopt.DIRTY)
+
+    def test_an_untracked_file_marks_it_too(self, history, project):
+        """A directory entry expands over whatever is on disk, committed or not."""
+        (history / ".claude" / "skills" / "demo" / "extra.md").write_text("new\n")
+        adopt.write(history, project)
+        assert adopt.recorded_commit(project).endswith(adopt.DIRTY)
+
+    def test_the_marked_sha_still_names_the_commit(self, history, project):
+        (history / STYLE).write_text("moved on\n")
+        adopt.write(history, project)
+        head = git(history, "rev-parse", "HEAD").stdout.strip()
+        assert adopt.recorded_commit(project) == head + adopt.DIRTY
+
+    def test_a_template_with_no_history_records_nothing(self, template, project):
+        adopt.write(template, project)
+        assert adopt.recorded_commit(project) == ""
+
+    def test_a_project_with_no_manifest_records_nothing(self, project):
+        assert adopt.recorded_commit(project) == ""
+
+
+class TestTheDistance:
+    def test_a_project_at_head_is_zero_commits_behind(self, history, project):
+        adopt.write(history, project)
+        assert adopt.commits_since(history, adopt.recorded_commit(project)) == 0
+
+    def test_every_commit_since_is_counted(self, history, project):
+        adopt.write(history, project)
+        was = adopt.recorded_commit(project)
+        for n in range(3):
+            git(history, "commit", "-q", "--allow-empty", "-m", f"later {n}")
+        assert adopt.commits_since(history, was) == 3
+
+    def test_the_marker_does_not_stop_the_count(self, history, project):
+        (history / STYLE).write_text("moved on\n")
+        adopt.write(history, project)
+        git(history, "commit", "-qam", "landed")
+        assert adopt.commits_since(history, adopt.recorded_commit(project)) == 1
+
+    def test_a_sha_this_history_does_not_carry_counts_nothing(self, history):
+        assert adopt.commits_since(history, "0" * 40) is None
+
+    def test_a_sha_that_is_no_ancestor_counts_nothing(self, history):
+        """What a force push, a rebase or a second clone leaves in a manifest."""
+        git(history, "checkout", "-q", "-b", "elsewhere")
+        git(history, "commit", "-q", "--allow-empty", "-m", "a fork")
+        forked = git(history, "rev-parse", "HEAD").stdout.strip()
+        git(history, "checkout", "-q", "-")
+        assert adopt.commits_since(history, forked) is None
+
+    def test_a_template_with_no_history_counts_nothing(self, template):
+        assert adopt.commits_since(template, "0" * 40) is None
+
+    def test_no_recorded_sha_counts_nothing(self, history):
+        assert adopt.commits_since(history, "") is None
+
+
+class TestTheDriftCheck:
+    """`--check` compares the template's bytes against the hashes the manifest recorded.
+
+    Against the manifest and never against the recorded commit, so the file
+    list holds when no count can be measured and on a machine with no git.
+    """
+
+    def test_a_project_adopted_from_this_template_is_level(self, template, project, capsys):
+        adopt.write(template, project)
+        assert adopt.check(template, project) == adopt.CHECK_LEVEL
+        assert "No file this project copies has changed." in capsys.readouterr().out
+
+    def test_a_moved_file_the_project_left_alone_is_taken(self, template, project, capsys):
+        adopt.write(template, project)
+        (template / STYLE).write_text("newer\n")
+        assert adopt.check(template, project) == adopt.CHECK_BEHIND
+        out = capsys.readouterr().out
+        assert "1 tracked files changed:" in out
+        assert "1 you have not edited   -> a rerun takes them" in out
+        assert f"{adopt.UNEDITED:<9} {STYLE}" in out
+
+    def test_a_moved_file_the_project_edited_is_sidecarred(self, template, project, capsys):
+        adopt.write(template, project)
+        (template / STYLE).write_text("newer\n")
+        (project / STYLE).write_text("mine\n")
+        assert adopt.check(template, project) == adopt.CHECK_BEHIND
+        out = capsys.readouterr().out
+        assert "1 you have edited       -> a rerun sidecars yours" in out
+        assert f"{adopt.EDITED:<9} {STYLE}" in out
+
+    def test_the_projects_own_edit_alone_is_no_drift(self, template, project, capsys):
+        """A rerun still acts on it, and the template has not moved."""
+        adopt.write(template, project)
+        (project / STYLE).write_text("mine\n")
+        assert adopt.check(template, project) == adopt.CHECK_LEVEL
+
+    def test_a_file_the_project_deleted_counts_as_unedited(self, template, project, capsys):
+        adopt.write(template, project)
+        (template / STYLE).write_text("newer\n")
+        (project / STYLE).unlink()
+        assert adopt.check(template, project) == adopt.CHECK_BEHIND
+        assert f"{adopt.UNEDITED:<9} {STYLE}" in capsys.readouterr().out
+
+    def test_a_file_the_template_gained_is_unedited(self, template, project, capsys):
+        adopt.write(template, project)
+        (template / "docs" / "development" / "NEW.md").write_text("new\n")
+        (template / "seeds.json").write_text(
+            json.dumps({"tracked": [".claude/skills/", STYLE, "docs/development/NEW.md"]})
+        )
+        assert adopt.check(template, project) == adopt.CHECK_BEHIND
+        assert f"{adopt.UNEDITED:<9} docs/development/NEW.md" in capsys.readouterr().out
+
+    def test_a_path_the_template_stopped_shipping_is_named(self, template, project, capsys):
+        adopt.write(template, project)
+        (template / "seeds.json").write_text(json.dumps({"tracked": [".claude/skills/"]}))
+        assert adopt.check(template, project) == adopt.CHECK_BEHIND
+        out = capsys.readouterr().out
+        assert f"{adopt.DROPPED:<9} {STYLE}" in out
+        assert "gone from seeds.json" in out
+
+    def test_a_project_with_no_manifest_is_unanswered(self, template, project, capsys):
+        assert adopt.check(template, project) == adopt.CHECK_UNANSWERED
+        assert "no adoption ever wrote here" in capsys.readouterr().out
+
+    def test_the_commit_count_never_decides_the_exit_code(self, history, project, capsys):
+        """A template that moved without touching a seeded file leaves the project current."""
+        adopt.write(history, project)
+        git(history, "commit", "-q", "--allow-empty", "-m", "somewhere else")
+        assert adopt.check(history, project) == adopt.CHECK_LEVEL
+        assert "moved 1 commits since this project adopted it" in capsys.readouterr().out
+
+    def test_a_dirty_adoption_says_no_count_describes_it(self, history, project, capsys):
+        (history / STYLE).write_text("uncommitted\n")
+        adopt.write(history, project)
+        adopt.check(history, project)
+        assert "carrying uncommitted changes" in capsys.readouterr().out
+
+    def test_a_sha_the_history_lost_says_so_and_still_lists_files(self, history, project, capsys):
+        adopt.write(history, project)
+        recorded = project / adopt.MANIFEST_REL
+        body = json.loads(recorded.read_text())
+        body["template"]["commit"] = "0" * 40
+        recorded.write_text(json.dumps(body))
+        (history / STYLE).write_text("newer\n")
+        assert adopt.check(history, project) == adopt.CHECK_BEHIND
+        out = capsys.readouterr().out
+        assert "A force push, a rebase or a" in out
+        assert f"{adopt.UNEDITED:<9} {STYLE}" in out
+
+    def test_a_manifest_with_no_commit_says_so(self, template, project, capsys):
+        adopt.write(template, project)
+        assert adopt.check(template, project) == adopt.CHECK_LEVEL
+        assert "records no template commit" in capsys.readouterr().out
+
+    def test_a_level_project_names_no_file(self, history, project, capsys):
+        adopt.write(history, project)
+        adopt.check(history, project)
+        assert "tracked files changed" not in capsys.readouterr().out
+
+
+class TestTheCheckFlag:
+    def test_it_writes_nothing(self, template, project, capsys):
+        adopt.write(template, project)
+        (template / STYLE).write_text("newer\n")
+        adopt.main([str(project), "--check", "--template", str(template)])
+        assert (project / STYLE).read_text() != "newer\n"
+
+    def test_a_behind_project_exits_one(self, template, project, capsys):
+        adopt.write(template, project)
+        (template / STYLE).write_text("newer\n")
+        assert adopt.main([str(project), "--check", "--template", str(template)]) == 1
+
+    def test_a_level_project_exits_zero(self, template, project, capsys):
+        adopt.write(template, project)
+        assert adopt.main([str(project), "--check", "--template", str(template)]) == 0
+
+    def test_it_needs_no_pack(self, template, project, capsys):
+        """The recorded pack answers it, and a project asking this writes nothing."""
+        adopt.main([str(project), "--write", "--pack", "python", "--template", str(template)])
+        capsys.readouterr()
+        assert adopt.main([str(project), "--check", "--template", str(template)]) == 0
+
+    def test_it_does_not_run_with_write(self, template, project, capsys):
+        adopt.write(template, project)
+        assert adopt.main([str(project), "--check", "--write", "--template", str(template)]) == 2
+        assert "does not run with --write" in capsys.readouterr().err
+
+    def test_an_unadopted_directory_exits_two(self, template, project, capsys):
+        assert adopt.main([str(project), "--check", "--template", str(template)]) == 2
+
+    def test_the_rerun_it_names_is_the_one_that_takes_them(self, template, project, capsys):
+        adopt.write(template, project)
+        (template / STYLE).write_text("newer\n")
+        adopt.main([str(project), "--check", "--template", str(template)])
+        assert f"bin/adopt {project} --write" in capsys.readouterr().out
+
+
 class TestAWithheldPathAlreadyInAProject:
     """The rerun for a project adopted before the exclusion landed.
 
