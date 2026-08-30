@@ -179,6 +179,35 @@ class TestCheckers:
         assert "a.md:1" in done.stdout
         assert "em dash" in done.stdout
 
+    def test_check_style_reads_a_single_file(self, tmp_path):
+        """Rule 24 covers a report or a handover, which live outside any repository."""
+        report = tmp_path / "handover.md"
+        report.write_text("A sentence with " + chr(8212) + ".\n", encoding="utf-8")
+        done = run(CHECK_STYLE, str(report))
+        assert done.returncode == 1
+        assert "handover.md:1" in done.stdout
+        assert "em dash" in done.stdout
+
+    def test_a_clean_single_file_passes(self, tmp_path):
+        report = tmp_path / "handover.md"
+        report.write_text("A sentence with nothing wrong with it.\n", encoding="utf-8")
+        done = run(CHECK_STYLE, str(report))
+        assert done.returncode == 0
+        assert "Style is clean." in done.stdout
+
+    def test_changed_against_a_single_file_says_what_to_pass(self, tmp_path):
+        """`--changed` asks git for a diff, and a lone file has no repository to diff against."""
+        report = tmp_path / "handover.md"
+        report.write_text("Prose.\n", encoding="utf-8")
+        done = run(CHECK_STYLE, str(report), "--changed")
+        assert done.returncode != 0
+        assert "Give it a directory" in done.stderr + done.stdout
+
+    def test_a_path_that_is_neither_says_so(self, tmp_path):
+        done = run(CHECK_STYLE, str(tmp_path / "nothing.md"))
+        assert done.returncode != 0
+        assert "neither a file nor a directory" in done.stderr + done.stdout
+
     def test_a_check_date_in_a_skill_description_fails(self, tmp_path):
         """#45 measured what a date with no gate behind it buys: four refreshes due, zero run.
 

@@ -10,9 +10,14 @@ wolf, and a gate people learn to ignore protects nothing.
     bin/check-style .              # every tracked file under a directory
     bin/check-style . --changed    # only what differs from main
     bin/check-style ../other-repo  # a checkout that is not this one
+    bin/check-style ~/report.md    # one file, tracked or not
 
 The path is an argument, so one copy gates several repositories. A template
 that seeds this file into a project needs it to check the project it landed in.
+
+A file named on the command line is read whatever its suffix and wherever it
+lives. Rule 24 covers a report, a log or a handover written outside any
+repository, and a walk over tracked files reaches none of those.
 """
 
 from __future__ import annotations
@@ -147,15 +152,23 @@ def check(root: Path, path: Path) -> list[str]:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("path", nargs="?", default=".", help="Repository to check. Default: here.")
+    ap.add_argument(
+        "path", nargs="?", default=".", help="Repository or file to check. Default: here."
+    )
     ap.add_argument("--changed", action="store_true", help="Only files differing from main.")
     args = ap.parse_args()
 
-    root = Path(args.path).resolve()
-    if not root.is_dir():
-        sys.exit(f"{root} is not a directory.")
+    target = Path(args.path).resolve()
+    if target.is_dir():
+        root, files = target, tracked(target, args.changed)
+    elif target.is_file():
+        if args.changed:
+            sys.exit("--changed selects files inside a repository. Give it a directory.")
+        root, files = target.parent, [target]
+    else:
+        sys.exit(f"{target} is neither a file nor a directory.")
 
-    problems = [p for path in tracked(root, args.changed) for p in check(root, path)]
+    problems = [p for path in files for p in check(root, path)]
     if not problems:
         print("Style is clean.")
         return 0
