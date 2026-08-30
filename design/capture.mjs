@@ -4,9 +4,11 @@
 //   node design/capture.mjs --only Inbox
 //   node design/capture.mjs --base http://localhost:4173
 //
-// The typescript pack's driver. `design/capture.py` is the python pack's, and
-// `design/capture.js` is the contract they share, so both write the same bytes
-// from the same screen. `design-process` step 6 is the method this runs.
+// The typescript pack's driver, and one of the two the `none` pack receives.
+// `design/capture.py` is the python pack's, and `design/capture.js` is the
+// contract they share, so both write the same bytes from the same screen. The
+// stamp names which one ran. `design-process` step 6 is the method this runs
+// and says how it picks a driver on a project holding both.
 //
 // This points at a URL and never starts the app. Building a fixture and
 // starting a dev server is the most project-specific thing a capture does, and
@@ -50,6 +52,11 @@ const GRID = 1 / 64;
 // characters. `design/capture.py` computes the same field the same way, and
 // `design/capture.js` carries the definition.
 const DIGEST_CHARS = 16;
+
+// The stamp's driver field. A project on the `none` pack holds both drivers,
+// so an artboard says which runtime wrote it and a box that moved between two
+// artboards can be read as a browser difference rather than a screen change.
+const DRIVER_NAME = 'capture.mjs';
 
 // A screen that has not painted in this long is a screen that never will, and a
 // run that hangs on it reports nothing at all.
@@ -165,7 +172,8 @@ for (const screen of wanted) {
 		commit,
 		at,
 		viewport: `${width}x${height}`,
-		digest: createHash('sha256').update(forms.classes.body).digest('hex').slice(0, DIGEST_CHARS)
+		digest: createHash('sha256').update(forms.classes.body).digest('hex').slice(0, DIGEST_CHARS),
+		driver: DRIVER_NAME
 	};
 	const written = {};
 	for (const [form, data] of Object.entries(forms)) {

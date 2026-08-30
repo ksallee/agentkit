@@ -181,11 +181,29 @@ class TestThePacksOwnDriver:
         declared = json.loads((ROOT / "seeds.json").read_text())
         assert set(declared["per_pack"]) == set(adopt.PACKS)
 
-    def test_this_repository_seeds_one_driver_per_pack(self):
-        drivers = {"design/capture.py", "design/capture.mjs"}
+    DRIVERS = {"design/capture.py", "design/capture.mjs"}
+    GENERATORS = {"design/build.py", "design/build.mjs"}
+
+    def test_a_language_pack_seeds_one_driver(self):
+        """A python project gains nothing from a node driver it will not run."""
         for pack in adopt.PACKS:
-            seeded = {rel for rel, _ in adopt.seeds(ROOT, pack)} & drivers
-            assert len(seeded) == (0 if pack == "none" else 1), pack
+            if pack == "none":
+                continue
+            seeded = {rel for rel, _ in adopt.seeds(ROOT, pack)} & self.DRIVERS
+            assert len(seeded) == 1, pack
+
+    def test_the_none_pack_seeds_both_drivers_and_both_generators(self):
+        """#142. A driver needs a browser, and a gate list naming no toolchain says
+        nothing about which runtime the machine has, so the pack that declares no
+        language takes the pair and `design-process` step 6 runs whichever is there.
+        """
+        seeded = {rel for rel, _ in adopt.seeds(ROOT, "none")}
+        assert seeded >= self.DRIVERS
+        assert seeded >= self.GENERATORS
+
+    def test_the_note_says_the_none_pack_takes_both(self):
+        declared = json.loads((ROOT / "seeds.json").read_text())
+        assert "none takes both pairs" in declared["note"]
 
     def test_the_contract_and_the_screen_list_seed_to_every_pack(self):
         for pack in adopt.PACKS:
@@ -243,28 +261,29 @@ class TestTheSeededProbe:
         declared = json.loads((ROOT / "seeds.json").read_text())
         assert "probes/skill_sources.py" in declared["note"]
 
-    def test_the_python_packs_and_the_none_pack_gate_the_probe(self):
+    def test_every_pack_gates_the_probe(self):
         """A seeded probe nothing runs is rule 9's dead rule with a file attached.
 
         `seeds.json` puts `probes/skill_sources.py` in `tracked`, so every pack
         receives a probe, and a pack gating none of it carries rule 9 with
-        nothing behind it.
+        nothing behind it. `typescript` was the one pack left out, on the
+        grounds that a node project should not take a Python interpreter for
+        one gate, and it already takes two (#124).
         """
-        for pack in ("python", "python+typescript", "none"):
+        for pack in adopt.PACKS:
             commands = {command for _, command, _ in adopt.PACKS[pack]}
             assert "bin/check-probes" in commands, pack
+            assert "probes/skill_sources.py" in {rel for rel, _ in adopt.seeds(ROOT, pack)}, pack
 
-    def test_the_typescript_pack_takes_no_python_gate(self):
-        """`seeds.json` seeds the probe to every pack, and this one cannot gate it.
+    def test_the_interpreter_was_paid_before_the_probe_gate_was_considered(self):
+        """The measurement #124 settled on, kept where a reader of the gate list is.
 
-        `bin/check-probes` is a Python script, so gating it here would make a
-        node project install an interpreter for one gate. That project runs
-        `python3 probes/skill_sources.py` by hand or declares the gate itself,
-        the way #71 left the weekly job to the project.
+        Both checkers a pack declares before this one run under python3, so the
+        argument that the probes gate costs a node project an interpreter
+        cannot separate it from the style gate every pack already has.
         """
-        commands = {command for _, command, _ in adopt.PACKS["typescript"]}
-        assert "bin/check-probes" not in commands
-        assert "probes/skill_sources.py" in {rel for rel, _ in adopt.seeds(ROOT, "typescript")}
+        for checker in ("bin/check-style", "bin/check-probes", "bin/adopt"):
+            assert (ROOT / checker).read_text().splitlines()[0] == "#!/usr/bin/env python3"
 
 
 class TestTheSeededTest:
@@ -1915,3 +1934,267 @@ class TestAPersonalSkillOfASeededName:
         assert adopt.personal_collisions(template) == (None, [])
         adopt.main([str(project), "--template", str(template)])
         assert "did not load, so no personal skill was listed" in capsys.readouterr().out
+
+
+class TestTheProjectCommand:
+    """The command named after the project, which is where a session starts.
+
+    #146 settled reading 2 of four: it reads the layers and the phase, then
+    says where the last session stopped. `/work` reads the board. Rendered per
+    project like `CLAUDE.md` and the two workflows, so it carries no manifest
+    row and no rerun replaces it.
+    """
+
+    def test_a_name_with_a_space_and_a_capital_becomes_a_slug(self):
+        assert adopt.command_name("Mac Hours") == "mac-hours"
+        assert adopt.command_name("  CSS Fun / Experiments!  ") == "css-fun-experiments"
+        assert adopt.command_name("agentkit") == "agentkit"
+
+    def test_a_name_with_no_letter_or_digit_names_no_command(self):
+        assert adopt.command_name("...") == ""
+
+    def test_it_falls_back_to_the_directory_name(self, template, project):
+        slug, why = adopt.project_command(template, project, {**ANSWERS, "name": "***"})
+        assert (slug, why) == ("project", "")
+
+    def test_a_name_that_survives_neither_seeds_nothing_and_says_why(self, template, tmp_path):
+        odd = tmp_path / "***"
+        odd.mkdir()
+        slug, why = adopt.project_command(template, odd, {**ANSWERS, "name": "***"})
+        assert slug == ""
+        assert "names no command" in why
+
+    def test_a_name_matching_a_seeded_command_is_refused(self, project):
+        """`.claude/commands/` is a byte copy replaced on every rerun, so a rendered
+        file written there would be overwritten and the project would lose its entry
+        point without being told.
+        """
+        slug, why = adopt.project_command(ROOT, project, {**ANSWERS, "name": "Work"})
+        assert slug == ""
+        assert "already seeds" in why
+
+    def test_it_lands_in_an_empty_project(self, template, project):
+        rows = adopt.seed_command(project, ANSWERS, "demo")
+        assert statuses(rows) == {".claude/commands/demo.md": "seeded"}
+        assert (project / ".claude/commands/demo.md").is_file()
+
+    def test_the_body_reads_the_layers_and_the_phase(self, template, project):
+        adopt.seed_command(project, ANSWERS, "demo")
+        body = (project / ".claude/commands/demo.md").read_text()
+        assert "session on demo starts" in body
+        assert "`.agentkit/phase.json`" in body
+        assert "`.agentkit/team.md`" in body
+        assert "CLAUDE.md" in body
+
+    def test_shaping_names_shape_and_building_names_work(self, project):
+        """A project in `shaping` has no board, and `pick-work` says as much."""
+        adopt.seed_command(project, ANSWERS, "demo")
+        body = (project / ".claude/commands/demo.md").read_text()
+        assert "**`shaping`.**" in body and "`shape` skill" in body
+        assert "**`building`.**" in body and "`/work`" in body
+
+    def test_the_frontmatter_carries_the_slug_and_never_the_raw_name(self, project):
+        """A project name may hold a quote or a colon, and the slug never can."""
+        adopt.seed_command(project, {**ANSWERS, "name": 'Bob"s: thing'}, "bob-s-thing")
+        front = (project / ".claude/commands/bob-s-thing.md").read_text().split("---")[1]
+        assert "bob-s-thing" in front
+        assert '"' not in front and ":" in front.split("description")[1][:2]
+
+    def test_a_rerun_leaves_an_edited_command_alone(self, project):
+        adopt.seed_command(project, ANSWERS, "demo")
+        (project / ".claude/commands/demo.md").write_text("# ours\n")
+        rows = adopt.seed_command(project, ANSWERS, "demo")
+        assert statuses(rows) == {".claude/commands/demo.md": "present"}
+        assert (project / ".claude/commands/demo.md").read_text() == "# ours\n"
+
+    def test_it_is_never_in_the_manifest(self, template, project):
+        adopt.write(template, project)
+        adopt.seed_command(project, ANSWERS, "demo")
+        assert not any(rel.endswith("/demo.md") for rel in adopt.manifest(project))
+
+    def test_a_plan_writes_no_command(self, project):
+        assert statuses(adopt.plan_command(project, "demo")) == {".claude/commands/demo.md": "seeded"}
+        assert not (project / ".claude/commands").exists()
+
+    def test_a_refused_slug_plans_nothing(self, project):
+        assert adopt.plan_command(project, "") == []
+
+    def test_a_write_seeds_it_and_the_report_names_it(self, template, project, capsys):
+        assert adopt.main([str(project), "--write", "--pack", "none", "--template", str(template)]) == 0
+        out = capsys.readouterr().out
+        assert "the entry point a session starts at" in out
+        assert (project / ".claude/commands/project.md").is_file()
+
+    def test_the_router_names_it_as_the_entry_point(self, template):
+        body = adopt.router(template, ANSWERS, "demo")
+        assert "`/demo` is where a session starts" in body
+        assert "`/work`, reads the board" in body
+
+    def test_the_router_names_work_alone_when_there_is_no_command(self, template):
+        body = adopt.router(template, ANSWERS, "")
+        assert "/demo" not in body
+        assert "`/work`" in body
+
+    def test_no_placeholder_survives_either_rendering(self, template):
+        for slug in ("demo", ""):
+            assert not re.search(r"\{[a-z_]+\}", adopt.router(template, ANSWERS, slug))
+
+    def test_both_files_say_which_one_reads_the_board(self, project):
+        """Or the second is dead weight the moment somebody notices they overlap."""
+        adopt.seed_command(project, ANSWERS, "demo")
+        assert "reads the board" in (project / ".claude/commands/demo.md").read_text()
+        assert "reads the board" in (ROOT / ".claude/commands/work.md").read_text()
+
+
+class TestTheEffortLabels:
+    """The three `effort:` labels a first write creates, and the areas it does not.
+
+    #125 settled position 2: effort describes what it costs to verify
+    something and reads the same in any project, areas are the project's own
+    and `shape` settles them. `gh` is never called here; every test drives the
+    two subprocess helpers, so the suite touches no remote.
+    """
+
+    @pytest.fixture
+    def gh(self, monkeypatch):
+        """A recorder standing in for `gh`, with one label already on the board."""
+        calls: list[tuple[str, ...]] = []
+        existing = ['{"name": "effort: quick"}', '{"name": "bug"}']
+
+        def fake_git(root, *args):
+            return subprocess.CompletedProcess(args, 0, stdout="origin\n", stderr="")
+
+        def fake_gh(root, *args):
+            calls.append(args)
+            if args[:2] == ("label", "list"):
+                return subprocess.CompletedProcess(args, 0, stdout=f"[{','.join(existing)}]", stderr="")
+            return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+
+        monkeypatch.setattr(adopt, "_git", fake_git)
+        monkeypatch.setattr(adopt, "_gh", fake_gh)
+        return calls
+
+    def test_it_creates_the_two_that_are_missing(self, project, gh):
+        rows, problem = adopt.seed_labels(project)
+        assert problem == ""
+        assert statuses(rows) == {
+            "effort: quick": "present",
+            "effort: session": "seeded",
+            "effort: blocked": "seeded",
+        }
+
+    def test_a_rerun_over_a_full_board_creates_nothing(self, project, monkeypatch):
+        monkeypatch.setattr(
+            adopt, "_git", lambda root, *a: subprocess.CompletedProcess(a, 0, stdout="origin\n", stderr="")
+        )
+        board = json.dumps([{"name": name} for name, _, _ in adopt.EFFORT_LABELS])
+        monkeypatch.setattr(
+            adopt, "_gh", lambda root, *a: subprocess.CompletedProcess(a, 0, stdout=board, stderr="")
+        )
+        rows, problem = adopt.seed_labels(project)
+        assert problem == ""
+        assert {row.status for row in rows} == {"present"}
+
+    def test_it_creates_no_area_label(self, project, gh):
+        adopt.seed_labels(project)
+        created = [args for args in gh if args[:2] == ("label", "create")]
+        assert created
+        assert not [args for args in created if args[2].startswith("area:")]
+
+    def test_every_label_carries_a_description_and_a_colour(self, project, gh):
+        adopt.seed_labels(project)
+        for args in [a for a in gh if a[:2] == ("label", "create")]:
+            assert "--description" in args and "--color" in args
+
+    def test_the_descriptions_are_about_verification_cost(self):
+        """They transfer because none of them names agentkit or any project part."""
+        assert [name for name, _, _ in adopt.EFFORT_LABELS] == [
+            "effort: quick",
+            "effort: session",
+            "effort: blocked",
+        ]
+        for _, description, colour in adopt.EFFORT_LABELS:
+            assert description and re.fullmatch(r"[0-9a-f]{6}", colour)
+
+    def test_a_project_with_no_remote_is_reported_and_nothing_runs(self, project, monkeypatch):
+        monkeypatch.setattr(adopt, "_git", lambda root, *a: None)
+        called = []
+        monkeypatch.setattr(adopt, "_gh", lambda root, *a: called.append(a))
+        rows, problem = adopt.seed_labels(project)
+        assert rows == [] and "no git remote" in problem
+        assert called == []
+
+    def test_a_machine_with_no_gh_is_reported(self, project, monkeypatch):
+        monkeypatch.setattr(
+            adopt, "_git", lambda root, *a: subprocess.CompletedProcess(a, 0, stdout="origin\n", stderr="")
+        )
+        monkeypatch.setattr(adopt, "_gh", lambda root, *a: None)
+        rows, problem = adopt.seed_labels(project)
+        assert rows == [] and "no gh" in problem
+
+    def test_an_unauthenticated_gh_is_reported_on_one_line(self, project, monkeypatch):
+        monkeypatch.setattr(
+            adopt, "_git", lambda root, *a: subprocess.CompletedProcess(a, 0, stdout="origin\n", stderr="")
+        )
+        monkeypatch.setattr(
+            adopt,
+            "_gh",
+            lambda root, *a: subprocess.CompletedProcess(a, 1, stdout="", stderr="gh: not logged in\nrun gh auth login\n"),
+        )
+        rows, problem = adopt.seed_labels(project)
+        assert rows == [] and problem == "gh: not logged in"
+
+    def test_a_failed_create_stops_and_keeps_what_landed(self, project, monkeypatch):
+        monkeypatch.setattr(
+            adopt, "_git", lambda root, *a: subprocess.CompletedProcess(a, 0, stdout="origin\n", stderr="")
+        )
+
+        def fake_gh(root, *args):
+            if args[:2] == ("label", "list"):
+                return subprocess.CompletedProcess(args, 0, stdout="[]", stderr="")
+            if args[2] == "effort: quick":
+                return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+            return subprocess.CompletedProcess(args, 1, stdout="", stderr="HTTP 403\n")
+
+        monkeypatch.setattr(adopt, "_gh", fake_gh)
+        rows, problem = adopt.seed_labels(project)
+        assert statuses(rows) == {"effort: quick": "seeded"}
+        assert problem == "HTTP 403"
+
+    def test_a_first_write_reaches_them_and_a_rerun_does_not(self, template, project, capsys):
+        assert adopt.main([str(project), "--write", "--pack", "none", "--template", str(template)]) == 0
+        assert "no git remote" in capsys.readouterr().out
+        adopt.main([str(project), "--write", "--pack", "none", "--template", str(template)])
+        assert "not a first write, so no label was read or created" in capsys.readouterr().out
+
+    def test_the_flag_skips_it(self, template, project, capsys):
+        adopt.main([str(project), "--write", "--pack", "none", "--no-labels", "--template", str(template)])
+        assert "not a first write, so no label was read or created" in capsys.readouterr().out
+
+    def test_a_plan_says_what_a_first_write_would_create(self, template, project, capsys):
+        adopt.main([str(project), "--template", str(template)])
+        assert "a first write creates them and no area: label" in capsys.readouterr().out
+
+    def test_the_report_names_shape_and_the_directory_it_runs_in(self, template, project, capsys):
+        """#128: a next step with no directory on it gets run in the wrong repository."""
+        adopt.main([str(project), "--write", "--pack", "none", "--template", str(template)])
+        out = capsys.readouterr().out
+        assert "No area: label was created" in out
+        assert "`shape` settles them" in out
+        assert f"Run `shape` in {project}" in out
+        assert "`.agentkit/process.toml`\nstays unwritten" in out
+
+    def test_the_labels_never_reach_the_agentkit_checkout(self, template, project, monkeypatch):
+        """gh reads the working directory's remote, so a call from here files against agentkit."""
+        seen = []
+        monkeypatch.setattr(
+            adopt, "_git", lambda root, *a: subprocess.CompletedProcess(a, 0, stdout="origin\n", stderr="")
+        )
+
+        def fake_gh(root, *args):
+            seen.append(Path(root))
+            return subprocess.CompletedProcess(args, 0, stdout="[]", stderr="")
+
+        monkeypatch.setattr(adopt, "_gh", fake_gh)
+        adopt.seed_labels(project)
+        assert seen and set(seen) == {project}

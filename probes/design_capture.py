@@ -46,7 +46,7 @@ ROOT = Path(__file__).resolve().parent.parent
 DRIVER = ROOT / "design" / "capture.py"
 
 # The stamp's fields, in the order `design/capture.js` writes them.
-STAMP = ("route", "commit", "at", "viewport", "digest")
+STAMP = ("route", "commit", "at", "viewport", "digest", "driver")
 
 PAGE = """<!doctype html>
 <html lang="en">
