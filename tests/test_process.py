@@ -324,7 +324,20 @@ class TestWhatAProjectConfigures:
         payload = pull(labels=["area: mechanism", "effort: quick"])
         done = run(project(tmp_path, AGENTKIT_CONFIG), payload, tmp_path)
         assert done.returncode == 1
-        assert "No kind label" in done.stdout
+        assert "The pull request carries no kind label" in done.stdout
+
+    def test_a_bare_pull_request_is_told_which_object_to_label(self, tmp_path):
+        """The message says the pull request and names the command, #95.
+
+        Two CI rounds on 2026-08-30 went to a pull request whose issue was
+        labelled correctly and whose own labels were empty.
+        """
+        done = run(project(tmp_path, AGENTKIT_CONFIG), pull(labels=[]), tmp_path)
+        assert done.returncode == 1
+        assert status(done.stdout, "labels") == "FAIL"
+        assert "The pull request carries 0 label(s) starting `area: `" in done.stdout
+        assert "The pull request carries no kind label" in done.stdout
+        assert 'gh pr edit 21 --add-label "area: <name>" --add-label "<kind>"' in done.stdout
 
     def test_a_personal_file_in_the_diff_fails(self, tmp_path):
         payload = pull(files=["bin/check-process", ".agentkit/local.md"])
