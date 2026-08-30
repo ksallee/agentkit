@@ -14,8 +14,11 @@ __pycache__/
 
 # Generated artboards. `design/capture.py` writes `<Name>.dc.html` and
 # `<Name>.classes.html` per screen, and `design/build.py` writes its own
-# `.dc.html` sheets beside them. `seeds.json` expands `design/` over what is
-# on disk, so one committed here reaches every adopting project and collides
-# with that project's next run. The generators and `screens.json` stay tracked.
+# `.dc.html` sheets beside them plus the `canvas.json` that lays every artboard
+# out. `seeds.json` expands `design/` over what is on disk, so one committed
+# here reaches every adopting project and collides with that project's next
+# run. The generators and `screens.json` stay tracked, which is why the layout
+# is named exactly.
 design/*.dc.html
 design/*.classes.html
+design/canvas.json

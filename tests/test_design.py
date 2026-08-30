@@ -209,10 +209,20 @@ class TestTheGenerator:
     def test_this_repository_ignores_a_generated_artboard(self):
         """The guard before the one above. `seeds.json` expands over the disk, so an
         artboard that never reaches the index is still seeded, and the ignore is what
-        keeps a run in this checkout from putting one there (#89).
+        keeps a run in this checkout from putting one there (#89). `design/build.py`
+        defaults `--out` to its own directory, so a plain run writes `canvas.json`
+        there too (#97).
         """
         here = subprocess.run(
-            ["git", "-C", str(ROOT), "check-ignore", "design/Home.dc.html", "design/Home.classes.html"],
+            [
+                "git",
+                "-C",
+                str(ROOT),
+                "check-ignore",
+                "design/Home.dc.html",
+                "design/Home.classes.html",
+                "design/canvas.json",
+            ],
             capture_output=True,
             text=True,
         )
