@@ -445,10 +445,13 @@ Say what goes in it and leave it to the operator. **Never write a stub.**
 `wrap-up` gives the reason: an empty file and a person nobody has asked look
 identical, and rule 0 depends on telling them apart.
 
-**What is left names `design/screens.json`.** It seeds one screen called `Home`
-at `/` against `http://localhost:5173`, a guess made before anybody saw the
-project, so the first capture run reaches nothing until somebody replaces it. It
-goes in the list beside `shape` and the missing `area:` labels.
+**What is left names `design/screens.json`.** Two halves, and they are not
+equally wrong. `http://localhost:5173` is Vite's default port, so it is already
+right for a SvelteKit, Astro or plain Vite project and wrong for everything
+else: say which this project is rather than telling somebody to replace a
+correct value. The one screen called `Home` at `/` is a placeholder in every
+project and always needs replacing before the first capture. Both go in the list
+beside `shape` and the missing `area:` labels.
 
 Three things it gets wrong by default. All three were paid for in #109's phase
 A, where the operator had to ask four times for something the report should
