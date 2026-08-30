@@ -221,6 +221,28 @@ class TestTheSeededProbe:
         declared = json.loads((ROOT / "seeds.json").read_text())
         assert "probes/skill_sources.py" in declared["note"]
 
+    def test_the_python_packs_gate_the_probe(self):
+        """A seeded probe nothing runs is rule 9's dead rule with a file attached.
+
+        Both python packs already run Python, so the checker costs them no
+        dependency they lack.
+        """
+        for pack in ("python", "python+typescript"):
+            commands = {command for _, command, _ in adopt.PACKS[pack]}
+            assert "bin/check-probes" in commands, pack
+
+    def test_the_typescript_pack_takes_no_python_gate(self):
+        """`seeds.json` seeds the probe to every pack, and this one cannot gate it.
+
+        `bin/check-probes` is a Python script, so gating it here would make a
+        node project install an interpreter for one gate. That project runs
+        `python3 probes/skill_sources.py` by hand or declares the gate itself,
+        the way #71 left the weekly job to the project.
+        """
+        commands = {command for _, command, _ in adopt.PACKS["typescript"]}
+        assert "bin/check-probes" not in commands
+        assert "probes/skill_sources.py" in {rel for rel, _ in adopt.seeds(ROOT, "typescript")}
+
 
 class TestTheRecordedPack:
     """The manifest carries the pack, because a rerun that guessed it seeds the wrong driver."""
