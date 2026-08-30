@@ -82,6 +82,12 @@ before proposing a write.
 | `unchanged` | Byte identical to the template | Nothing |
 | `updated` | Matches the manifest, so it is the template's own older copy | Replaces it |
 | `kept` | Matches neither, so somebody here wrote it | Writes the template version and moves theirs to `<path>.local` |
+| `removed` | The manifest records it, `seeds.json` no longer names it, and it still hashes to the recorded value, so the bytes are this template's | Deletes it, drops its manifest row, and takes any directory it emptied |
+| `orphaned` | Same, except the bytes differ, so the project owns them now | Nothing. The file stays, the row stays, and the next run reports it again |
+
+An orphan under `.claude/skills/` keeps loading and competes for its
+replacement's triggers, so read every `orphaned` line back and offer to merge
+or delete each one by hand.
 
 ## What runs in CI
 
@@ -183,7 +189,9 @@ The manifest is committed, so both people see the same adoption state.
 ## Updating later
 
 The same command. A file nobody touched comes back `unchanged` or `updated`,
-and a file somebody edited comes back `kept` with both names on the line. The
+and a file somebody edited comes back `kept` with both names on the line. A
+path this template stopped shipping comes back `removed` untouched and
+`orphaned` edited, and those two only ever appear on a rerun. The
 team layer and `CLAUDE.md` are seeded once and never rewritten, so an edit to
 `gates.toml` or to the project's own rules 1 to 8 survives every rerun.
 
@@ -200,6 +208,7 @@ by hand. Read the two files side by side when the template's rule set moves.
 | "I copied the file across and added the hash myself." | The manifest is the record of what the script wrote. A hand-written row makes the next `kept` a lie. |
 | "The sidecar is there, so nothing was lost." | A `.local` file is loaded by nothing. Until somebody merges it, the project lost the file it was using. |
 | "It only reported `kept`, so the run did nothing." | `kept` replaces the file. It is the loudest outcome, and it is why the plan is the default. |
+| "The run said `orphaned`, so there is nothing to do." | The file stays and goes on loading. `adopt` reports it every run because a person has to merge it or delete it. |
 | "Their `CLAUDE.md` was thin, so I moved it aside." | Four options, and the operator picks. Moving theirs aside stops their instructions loading. |
 | "I answered rules 1 to 8 from the codebase." | Those are the project's to lock. A guess written there reads as settled to the next session. |
 | "I added a gate, so I added a step to the workflow." | The workflow names no gate. `bin/verify` reads the declaration, and a step naming one is the copy that goes stale. |
