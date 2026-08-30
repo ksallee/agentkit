@@ -84,8 +84,7 @@ issue -> branch -> work -> PR -> review -> squash merge
 ```bash
 gh issue create --title "..." --label "area: rules,enhancement" --body-file /tmp/issue.md
 gh issue edit 12 --add-assignee @me
-git checkout main && git pull
-git checkout -b 12-short-slug
+git fetch origin && git switch -c 12-short-slug origin/main
 gh pr create --body-file /tmp/pr.md
 ```
 
@@ -124,7 +123,7 @@ git ingest"* tells them where somebody was going to poke. The body carries
 repro steps for anything behavioural, `file:line` for anything already located,
 and an explicit **out of scope** where the surrounding area is messy.
 
-### 11. Assign the issue to yourself, then branch off `main`, named after the issue number
+### 11. Assign the issue to yourself, then branch off `origin/main`, named after the issue number
 
 `12` or `12-slug`. The process job checks that the branch number matches an
 issue the pull request body closes or advances under rule 16, and that somebody
@@ -133,9 +132,24 @@ is assigned to it.
 ```bash
 gh issue view 12 --json assignees      # is anyone on it already?
 gh issue edit 12 --add-assignee @me
-git checkout main && git pull
-git checkout -b 12-short-slug
+git fetch origin && git switch -c 12-short-slug origin/main
 ```
+
+That one command works in a plain checkout and in a worktree. `git checkout
+main` works in only one of them:
+
+```
+fatal: 'main' is already used by worktree at /Users/you/dev/project
+```
+
+Cutting from `origin/main` drops the local branch out of the path, so a stale
+local `main` cannot put the work behind. Five agents in one parallel wave hit
+the worktree failure on the same afternoon (#57).
+
+**Parallel work happens in a git worktree under `.claude/worktrees/`.** One
+worktree per branch keeps two sessions out of each other's working tree, and
+`main` stays checked out in the original clone. The directory is gitignored
+(#47).
 
 Assignment claims the work. Pushing a branch does not, and with two people and
 an agent each, the same issue gets started twice.
