@@ -179,6 +179,30 @@ class TestCheckers:
         assert "a.md:1" in done.stdout
         assert "em dash" in done.stdout
 
+    def test_check_style_reads_html(self, tmp_path):
+        """#168. A page is the deliverable in some projects, and it was ungated.
+
+        The prose in a page is its copy and the comments in its `<style>` block.
+        Markup itself trips nothing, which is what the measurement on #168
+        found and what the second half of this test holds.
+        """
+        page = (
+            "<!doctype html>\n"
+            "<style>\n"
+            "  /* The container is the query root " + chr(8212) + " not the viewport. */\n"
+            "</style>\n"
+            "<h1 class=\"card\" data-x=\"y\">Container queries</h1>\n"
+            "<p>A container query asks the size of an ancestor.</p>\n"
+        )
+        repo = git_repo(tmp_path / "pages", {"feature.html": page})
+        done = run(CHECK_STYLE, str(repo))
+        assert done.returncode == 1
+        assert "feature.html:3" in done.stdout, done.stdout
+        assert "em dash" in done.stdout
+        # The markup lines carry no finding: only line 3 is reported.
+        assert "feature.html:5" not in done.stdout, done.stdout
+        assert "feature.html:6" not in done.stdout, done.stdout
+
     def test_check_style_reads_a_single_file(self, tmp_path):
         """Rule 24 covers a report or a handover, which live outside any repository."""
         report = tmp_path / "handover.md"

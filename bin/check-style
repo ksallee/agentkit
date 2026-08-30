@@ -32,7 +32,12 @@ from pathlib import Path
 # other tracked file is authored here and in scope.
 SKIP = ("web/src/lib/components/ui/", "node_modules/", ".venv/")
 
-SUFFIXES = (".md", ".py", ".ts", ".svelte", ".css", ".yml", ".yaml")
+# `.html` is here because a page is the deliverable in some projects, and rule 24
+# governs the prose inside one: copy, and the comments in a `<style>` block. The
+# worry was noise from tags. Measured on 167 lines in #168, three real catches
+# and no false positive: the rules are written against English constructions and
+# markup does not resemble English closely enough to trip them.
+SUFFIXES = (".md", ".py", ".ts", ".svelte", ".css", ".yml", ".yaml", ".html")
 
 # An executable with no suffix is authored prose too, and matching on suffix
 # alone let `bin/` escape its own gate. A tracked file with no extension is in
