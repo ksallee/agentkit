@@ -31,7 +31,7 @@ the checkout, and type it with the request in your own words:
 
 The command reads the rest of the line as your sentence and says it back:
 which directory, and whether this is a first adoption or an update. Then it
-asks the five answers in one pass, runs the plan, and writes nothing until you
+asks the answers in one pass, runs the plan, and writes nothing until you
 say yes. Every adoption runs from a checkout of this repository, including a
 rerun, so `seeds.json` withholds that skill and that command from the projects
 it seeds.
@@ -71,7 +71,7 @@ Your `.gitignore` gets a delimited block carrying `.agentkit/local.*`,
 and it is the one file a rerun edits in place. Git reads every line of it on its
 own, so the block is rewritten and every line outside it stays where you put it.
 
-The `adopt` skill asks the five answers the team layer and the router need. The
+The `adopt` skill asks the answers the team layer and the router need. The
 pack is the one it refuses to guess, because a gate list naming a command you do
 not run makes rule 17 disagree with CI. It also decides which browser driver the
 design pipeline gets: `python` and `python+typescript` take `design/capture.py`,
