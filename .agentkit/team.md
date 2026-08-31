@@ -64,12 +64,13 @@ two lines and this layer overrides nothing about them.
 
 ## Design
 
-One setting the design skills read. Rule 0 puts it here because two people
-open the same deliverable. `references` was the second until #123 removed it.
+Two settings the design skills read. Rule 0 puts them here because two people
+open the same deliverable. `references` was a third until #123 removed it.
 
 | Setting | Values | Meaning |
 |---|---|---|
 | surface | canvas, file, none | where a finished design lands |
+| review | artifact, paper, none | which medium in-progress design reaches a reader through |
 
 **agentkit: surface `none`.** This repository ships
 scaffolding and draws no screens, so `design-process` step 8 has nothing to
@@ -82,6 +83,18 @@ infrastructure. `file` keeps them at a path in the repository, named after the
 value: `file, design/`. `none` publishes nothing. `design-references` holds
 the reference list itself and reaches no service, so there is no second row to
 answer. #123 removed one, and #131 would put it back.
+
+**agentkit: review `artifact`.** In-progress design reaches a reader as a
+published Claude artifact, republished in place each pass so one link stays
+current. `paper` is the second medium, for a designer who already pays for
+Paper Desktop, and nothing writes to it until a probe prints what its local
+MCP server returns (#195). `none` shows nothing before step 8. The row is
+`artifact` here for the same reason `surface` is `none`: this repository draws
+no screens, and the value is what an adopted project inherits.
+
+One designer's own preference goes in `.agentkit/local.md` instead. Two
+designers on one project can want different media, and this row says what the
+project does rather than what either of them prefers.
 
 A skill reads this section as prose. No machine does, and no gate could: the
 one consumer is a person or an agent halfway through a design task, there is

@@ -1396,12 +1396,29 @@ class TestTheDesignSettings:
     `team_files()`, and nothing checked the two agree.
     """
 
-    def test_surface_is_the_only_design_setting(self, project):
+    def test_the_design_settings_are_surface_and_review(self, project):
         """#123 removed `references`, and a stale row would read as answerable."""
         adopt.seed_team(project, ANSWERS)
         body = (project / ".agentkit" / "team.md").read_text()
         assert "| surface | canvas, file, none |" in body
+        assert "| review | artifact, paper, none |" in body
         assert "references" not in body.split("## Design", 1)[1]
+
+    def test_review_seeds_as_its_default_with_no_question(self, project):
+        """#193: the medium has a default, so it renders answered every time.
+
+        `surface` is the opposite case, and rendering the two the same way
+        would tell a reader that the artifact medium is a choice nobody made.
+        """
+        adopt.seed_team(project, ANSWERS)
+        body = (project / ".agentkit" / "team.md").read_text().split("## Design", 1)[1]
+        assert "**`review` is `artifact`.**" in body
+
+    def test_no_review_flag_exists(self, template, project):
+        """#193 seeds the row and adds no seventh answer, so argparse refuses one."""
+        with pytest.raises(SystemExit):
+            adopt.main([str(project), "--write", "--pack", "none", "--review", "paper",
+                        "--template", str(template)])
 
     def test_surface_is_seeded_unanswered(self, project):
         adopt.seed_team(project, ANSWERS)
