@@ -711,16 +711,22 @@ def check(template: Path, project: Path, pack: str = "none") -> int:
 # defect that a hand-written file and this renderer both claim one format with
 # nothing checking they agree. `tests/test_adopt.py` checks the headings.
 #
-# `surface` is the only design setting. A `references` row carried two values
-# until #123: `curated`, the list `design-references` holds, and `refero`, a
-# third-party catalogue. Refero's MCP access is sold on a Pro plan and the
-# address the skill named was a marketing page, so the value came out. A
-# setting with one legal value is a question with nothing to answer, so the row
-# came out with it. #131 is what would bring the row back.
+# `surface` and `review` are the design settings. `surface` places the finished
+# design and has no default, so adoption asks for it with `--surface`. `review`
+# places the passes before it and defaults to `artifact` (#193, #195), so no
+# adoption question asks about it and a project changes the word here.
+#
+# A `references` row carried two values until #123: `curated`, the list
+# `design-references` holds, and `refero`, a third-party catalogue. Refero's MCP
+# access is sold on a Pro plan and the address the skill named was a marketing
+# page, so the value came out. A setting with one legal value is a question with
+# nothing to answer, so the row came out with it. #131 is what would bring the
+# row back.
 DESIGN_TABLE = (
     "| Setting | Values | Meaning |\n"
     "|---|---|---|\n"
     "| surface | canvas, file, none | where a finished design lands |\n"
+    "| review | artifact, paper, none | which medium in-progress design reaches a reader through |\n"
 )
 
 # What `team_files` renders, for the plan, which has no answers to render
@@ -744,7 +750,9 @@ def team_files(answers: dict[str, str]) -> dict[str, str]:
     `## Design` carries the surface when `--surface` answered it, and says
     nobody has picked one when it did not. The skill asks for the surface in
     the same call as the pack, so a team file rendering it as unanswered loses
-    an answer given thirty seconds earlier (#162).
+    an answer given thirty seconds earlier (#162). `review` renders as its
+    default beside it, because #195 settled the default and a sixth question at
+    adoption buys nothing over one word a project edits.
     """
     pack = answers["pack"]
     surface = answers["surface"]
@@ -785,6 +793,12 @@ def team_files(answers: dict[str, str]) -> dict[str, str]:
                 f"**{answers['name']}: surface `{surface}`.**\n"
                 if surface
                 else "`surface` waits until somebody picks one.\n"
+            )
+            + (
+                "\n**`review` is `artifact`.** In-progress design reaches a reader as a\n"
+                "published Claude artifact, republished in place each pass. A project whose\n"
+                "designer works in Paper edits the word, and `design-process` says what\n"
+                "each value asks of the session.\n"
             )
         ),
     }

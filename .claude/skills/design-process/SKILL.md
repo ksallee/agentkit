@@ -15,13 +15,49 @@ This skill is the method. Six inputs are the project's.
 | Input | Where it lives | Absent |
 |---|---|---|
 | The constraints on every screen | the design guide under `docs/` | Ask, and write the answers there |
-| The person the work is delivered to | `.agentkit/local.md` | Nobody has been asked yet (rule 0) |
+| The person the work is delivered to, and the medium they want it in | `.agentkit/local.md` | Nobody has been asked yet (rule 0) |
 | Where a finished design lands | `.agentkit/team.md`, `## Design`, `surface` | Ask. Step 8 has three answers and no default |
+| Which medium in-progress design reaches a reader through | `.agentkit/team.md`, `## Design`, `review` | Take `artifact`. The row seeds with it, so an absent row is a project on the default |
 | The capture, and the screens it opens | `design/capture.js` with `design/capture.py`, `design/capture.mjs` or both, seeded by `adopt`, and `design/screens.json` | Adopt the scaffolding. Step 6 says which driver to run, what the shipped capture asserts and what it leaves to you |
 | The artboard generator, and the components it draws with | `design/build.py` or `design/build.mjs`, seeded by `adopt`; the components are the project's | Adopt the scaffolding. It ships the palette, the scales and one entry point, and no component |
 
 Report an absent input and ask. A guessed constraint reads as a settled one on
 the artboard, and whoever never agreed to it finds out at review.
+
+## The loop, and the mode it runs in
+
+Steps 3 to 7 run more than once. A set of artboards goes in front of the
+operator, the direction gets confirmed or corrected, and the next pass carries
+the correction. An agent that walks 1 to 9 once has made every call itself, and
+the first place anybody can disagree is the deliverable.
+
+**Ask which mode at launch. Record nothing.** An operator away from the
+keyboard wants the run to finish. The same operator at the keyboard wants to
+see each pass. A stored default is wrong half the time, so the question gets
+asked every time a designer agent is launched on a task.
+
+| Mode | Between passes |
+|---|---|
+| autonomous | Nothing. The agent runs to the deliverable and reports once |
+| checkpointed | The agent publishes the review medium, asks whether the direction holds, and carries the answer into the next pass |
+
+**Two layers hold the medium, per rule 0.** `.agentkit/team.md` carries
+`review`, the medium this project's in-progress design reaches a reader
+through, because a project paying for a design tool needs a committed place
+saying so. `.agentkit/local.md` carries what one designer wants, because two
+designers on one project can want different media and neither gets forced onto
+the other's tool.
+
+| `review` | What the operator opens mid-work |
+|---|---|
+| `artifact` | A published Claude artifact carrying the artboards, republished in place each pass so one link stays current |
+| `paper` | The designer's own Paper canvas. Nothing here writes to it until a probe prints what its local MCP server returns, which rule 9 requires and nobody has run |
+| `none` | Nothing until step 8 |
+
+Screenshots pasted into a terminal are what a session delivers when nobody
+named the medium. They arrive at whatever size the terminal gives them, drop
+the live layout and the type, and cost a round of asking to see it bigger.
+Favour an artifact.
 
 ## 1. Decide the product shape before the UI
 
@@ -160,7 +196,8 @@ looked finished found sixteen problems, all real.
 ## 8. The deliverable, as the team layer names it
 
 `.agentkit/team.md` carries `surface` under `## Design`, and rule 0 puts the
-choice there because two people open the same thing.
+choice there because two people open the same thing. `surface` places the
+finished design. `review` beside it places the passes before this one.
 
 | `surface` | What step 8 does |
 |---|---|

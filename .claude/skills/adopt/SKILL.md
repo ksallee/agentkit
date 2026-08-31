@@ -83,7 +83,7 @@ and defaults to `shaping` when there is no commit.
 ## The six answers
 
 All six are in the table below, and `surface` has a section of its own under
-`### The one design setting`. Five carry a default worth accepting.
+`### The design settings`. Five carry a default worth accepting.
 
 **Every question carries its options and a recommendation.** That is the
 property, and it is the one that failed in #128: four rounds there were spent
@@ -180,7 +180,7 @@ The name and the summary reach two files: `.agentkit/team.md` and the project's
 `CLAUDE.md`, which an agent loads every turn. A summary nobody gave leaves both
 saying so.
 
-### The one design setting
+### The design settings
 
 `surface` says where a finished design lands
 (`canvas`, `file` or `none`). `adopt` seeds it unanswered, so somebody picks
@@ -188,6 +188,12 @@ one before the design skills run. Report it with its three values every time it
 comes up. A setting named as unanswered without its options tells the reader to
 go and find them in `design-process` step 8, and it was reported that way four
 times in one adoption before anybody said what they were.
+
+`review` says which medium in-progress design reaches a reader through
+(`artifact`, `paper` or `none`). It seeds as `artifact` and no flag asks about
+it, so it stays out of the batched call and the answers stay at six. Name it in
+the report with the value it seeded as, so an operator who works in Paper knows
+there is one word to change.
 
 ## Run the plan first, always
 
