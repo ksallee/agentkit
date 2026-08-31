@@ -29,7 +29,13 @@ permissions:
 
 concurrency:
   group: process-${{ github.ref }}
-  cancel-in-progress: true
+  # Cancel only where a newer run genuinely supersedes an older one, which is a
+  # new commit. A label change does not: it fires `labeled`, the run started by
+  # `opened` seconds earlier dies, and a cancelled run prints as `fail` with no
+  # failing step. 105 of 300 runs here were cancelled that way before #189, and
+  # `gh pr create --label` does not avoid it: it fires one `labeled` per label
+  # on top of `opened`, measured on this pull request.
+  cancel-in-progress: ${{ github.event_name == 'push' || github.event.action == 'synchronize' }}
 
 jobs:
   pull-request:

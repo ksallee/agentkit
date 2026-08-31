@@ -234,8 +234,16 @@ Never inline. Shell quoting mangles a body that contains backticks, quotes or a
 ```bash
 gh label list
 gh issue create --title "..." --label "area: rules,bug" --body-file /tmp/issue.md
-gh pr edit 12 --add-label "area: mechanism" --add-label "bug"
+gh pr create --body-file /tmp/pr.md --label "area: mechanism" --label "bug"
 ```
+
+**Label at creation, not after.** `gh pr edit --add-label` fires the
+`labeled` event, the process workflow cancels in progress on it, and the run
+`gh pr create` had just started dies. Measured 2026-08-30: 105 of the last 300
+runs here were cancelled, nearly all of them `Process`, and a cancelled run
+prints as `fail` with no failing step. `## Easy to get wrong` carries what that
+looks like. Use `--add-label` for a label added later, which is the case it is
+for.
 
 One `area:` label plus at least one kind label, on the issue and on the pull
 request both. `effort:` is a third axis and never counts as the kind. The

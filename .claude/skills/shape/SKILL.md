@@ -24,6 +24,7 @@ Check these and print the fix. Don't work around them.
 | Needs | Check | Fix |
 |---|---|---|
 | Somebody in the session who can answer | ask | Stop. Nothing here is answerable from the tree |
+| A model of the project that came from the operator | ask what it is before reading the tree | The tree says what was built and never what is intended. Say back what you think this is and let them correct it |
 | A router with the numbers held open | `grep -n "^## 1 to 8" CLAUDE.md` | `adopt` seeds it. On a router the project wrote, ask where its constraints already live |
 | Somewhere to file the questions | `gh issue list` | Without a tracker the answers still reach the router. Say that the reasoning has nowhere durable to go, and offer a file under `docs/` |
 | The session is in the project, not in the agentkit checkout | `git remote -v` | `cd` there first. `gh` reads the working directory's remote, so a run from the wrong one files the project's constraints against the template |
@@ -240,7 +241,7 @@ rules to a file that already has one.
 
 | Excuse | Reality |
 |---|---|
-| "The codebase answered question two." | It answered what somebody built. A constraint is their decision, and nobody has been asked. |
+| "The codebase answered question two." | It answered what somebody built. A constraint is their decision, and nobody has been asked. The precondition above exists because this row did not stop it (#188). |
 | "I wrote the router section and skipped the issue." | The reasoning is then in a transcript, and the first reversal has nothing to reverse against. |
 | "Nothing was settled, so I wrote nothing." | The issue is the output of that pass. Rule 22 asks for six open questions with costs on them. |
 | "All eight, in the first session." | Eight constraints settled before anything exists means most of them were guessed. Settle what is real, leave the rest open. |
