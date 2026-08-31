@@ -52,8 +52,8 @@ of what it saves. It brings no branch name. An empty GitHub repository has none
 to send: a branch name there is a property of a ref, and an empty repository has
 no refs. Measured 2026-08-30 on a repository created for it: `defaultBranchRef`
 came back with an empty name and `isEmpty` true, `git ls-remote --symref origin
-HEAD` printed nothing, and the clone landed on `main` because that is what the
-machine's `init.defaultBranch` said.
+HEAD` printed nothing, and the clone landed on `main` because this machine's
+`init.defaultBranch` says so.
 
 **So read the branch name after the clone and before the first commit, and
 rename it when it does not match.** `git init` reads the same setting, so the
@@ -106,8 +106,8 @@ take goes first, labelled `(Recommended)`.
 operator corrects them.** Both are free text, so a form slot buys nothing over a
 line somebody can type over. Say where each one came from: the name is the
 directory name, and the summary is usually already in the request that started
-the run. Say what decided the recommended phase too, which is whether the target
-has a commit. A default whose source is stated is one the operator can check.
+the run. Say what decided the recommended phase too: whether the target has a
+commit. A default whose source is stated is one the operator can check.
 
 Asking in bulk is not what went wrong in #128, and batching does not bring it
 back. What brings it back is a question with no options in it.
@@ -242,9 +242,9 @@ for areas that exist.
 `adopt` creates `effort: quick`, `effort: session` and `effort: blocked` on the
 project's own remote, with the descriptions this scaffolding uses, and creates
 no `area:` label. Effort says what it costs to verify something and reads the
-same in any project. Areas name one project's own parts, and `shape` is what
-settles them, so a seeded area taxonomy would be somebody else's labels in a
-place that reads as decided.
+same in any project. Areas name one project's own parts, and `shape`
+settles them, so a seeded taxonomy would be somebody else's labels in a place
+that reads as decided.
 
 Four things come with it, and all four go in the report:
 
