@@ -423,6 +423,24 @@ merging `main` in resolves cleanly against the squashed equivalent.
 on a pull request whose runs have not been created yet, so a count of zero
 failures is also what a pull request with no checks at all looks like.
 
+**A cancelled run prints as `fail`, with no failing step.** Pushing a branch and
+running `gh pr create` seconds apart queues two runs against one concurrency
+group, and GitHub cancels the older one. `gh pr checks` gives that run the same
+word a rule violation gets. Opening it to find which check failed turns up
+none, and an empty failure reads as broken tooling. `gh run view <id>` prints
+the annotation:
+
+```
+Canceling since a higher priority waiting request for
+process-refs/pull/12/merge exists
+```
+
+`gates.yml` and `process.yml` both key their concurrency group on `github.ref`
+with `cancel-in-progress: true`, here and in every project `adopt` seeds. Any
+two events on one ref race: a label added seconds after the pull request
+opened, a push landing while the previous run is still queued. The run that
+survived carries the result.
+
 **`gh pr merge` exits non-zero after the merge has landed.** Run from a
 worktree it fails on the local step that follows the merge, in one of two
 places depending on which branch is where:
