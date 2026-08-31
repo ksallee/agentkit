@@ -35,7 +35,7 @@ _loader.exec_module(adopt)
 
 # The six answers, as `main` assembles them. One constant, because the router
 # and the team layer are rendered from the same dict. `surface` is empty here
-# because that is what `main` passes when nobody answered `--surface`, and the
+# because `main` passes that when nobody answered `--surface`, and the
 # team layer says so in place of a value.
 ANSWERS = {
     "pack": "python",
@@ -2022,7 +2022,7 @@ class TestAPersonalSkillOfASeededName:
 
 
 class TestTheProjectCommand:
-    """The command named after the project, which is where a session starts.
+    """The command named after the project, where a session starts.
 
     #146 settled reading 2 of four: it reads the layers and the phase, then
     says where the last session stopped. `/work` reads the board. Rendered per

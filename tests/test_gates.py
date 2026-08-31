@@ -183,7 +183,7 @@ class TestCheckers:
         """#168. A page is the deliverable in some projects, and it was ungated.
 
         The prose in a page is its copy and the comments in its `<style>` block.
-        Markup itself trips nothing, which is what the measurement on #168
+        Markup itself trips nothing, and the measurement on #168
         found and what the second half of this test holds.
         """
         page = (
