@@ -62,6 +62,25 @@ where that run is tracked, and it stopped being hypothetical on 2026-08-30.
 **Commit trailers: rule 13's shipped default, unchanged.** The rule states the
 two lines and this layer overrides nothing about them.
 
+**CI runs on this project's own self-hosted runner, label `agentkit-local`.**
+Settled in #194 and dogfooded here first. Both workflow files name it in their
+`runs-on` lines, so no hosted minutes are billed and the gates run only while
+that machine is up. The machine is a UTM VM named "Github Runners" on the
+operator's Mac, reachable at `ssh -p 2222 gh-runners@127.0.0.1`, with one
+runner service per adopted repository. `sources.yml` stays hosted: it runs
+weekly whether or not that Mac is awake.
+
+A dead runner fails silently: a queued job waits for a machine that will
+never claim it, and the pull request reads as slow CI. Before opening a pull
+request, check `gh api repos/ksallee/agentkit/actions/runners` reports the
+runner online. A check still queued two minutes after a push means the runner
+is down: say so and name the VM instead of waiting. The preflight job in
+`gates.yml` runs the same check on every opened pull request.
+
+Moving back to hosted CI is a hand edit, and this is the whole of it:
+`ubuntu-latest` in both files' `runs-on` lines, the preflight job in
+`gates.yml` deleted, and this section with it.
+
 ## Design
 
 Two settings the design skills read. Rule 0 puts them here because two people
