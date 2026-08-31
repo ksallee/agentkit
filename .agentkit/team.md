@@ -67,8 +67,10 @@ Settled in #194 and dogfooded here first. Both workflow files name it in their
 `runs-on` lines, so no hosted minutes are billed and the gates run only while
 that machine is up. The machine is a UTM VM named "Github Runners" on the
 operator's Mac, reachable at `ssh -p 2222 gh-runners@127.0.0.1`, with one
-runner service per adopted repository. `sources.yml` stays hosted: it runs
-weekly whether or not that Mac is awake.
+runner service per adopted repository. The machine carries `gh`, which
+`bin/check-process` reads the pull request through: hosted runners have it
+preinstalled and the VM's first process run failed without it. `sources.yml`
+stays hosted: it runs weekly whether or not that Mac is awake.
 
 A dead runner fails silently: a queued job waits for a machine that will
 never claim it, and the pull request reads as slow CI. Before opening a pull
