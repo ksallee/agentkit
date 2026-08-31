@@ -1,6 +1,6 @@
 ---
 name: wrap-up
-description: End a session and leave the tree where the next session can start. Covers the gates, the worktrees and merged branches an agent session leaves behind, the prose the session added read against STYLE.md, every preference the session stated routed to the file that reads it next and recorded with `bin/surface`, the documents the session invalidated, and the recap. Use when someone says "wrap up", "call it a day", "let's stop here", "can I exit", or invokes `/done`.
+description: End a session and leave the tree where the next session can start. Covers the gates, the worktrees and merged branches an agent session leaves behind, the prose the session added read against STYLE.md, every preference the session stated routed to the file that reads it next and recorded with `bin/surface`, a fix to a seeded file weighed for the template's own board, the documents the session invalidated, and the recap. Use when someone says "wrap up", "call it a day", "let's stop here", "can I exit", or invokes `/done`.
 ---
 
 # Wrapping up
@@ -142,6 +142,42 @@ Two guards from rule 21. One instruction is one instruction: "branch it this
 time" says nothing about next time. And one person's preference stays in the
 personal layer until it applies to everybody.
 
+### The shipped layer is a copy, and upstream can hear about it
+
+This applies in a project that adopted the scaffolding, which is a project
+with `.agentkit/manifest.json`. In the template's own checkout there is no
+manifest and no upstream: the shipped files are the originals, and the table
+above already routes to them.
+
+Everywhere else, the last row's targets are copies the template seeded, and
+so is every skill under `.claude/skills/`. A preference routed into one of
+them fixes this project and leaves the template shipping the version this
+session found wanting, into every project that adopts next (#204).
+
+So weigh each preference that landed in a seeded file: would it hold in any
+project, or is it this project's own? For one that would hold anywhere, ask
+the operator whether to send it upstream, one question per item, with the
+quote in the question. The local edit happens either way, because this
+project cannot wait on the template. A project tired of being asked writes a
+standing answer in `.agentkit/team.md`, and until it does, nothing travels
+without a yes.
+
+On a yes, file it on the template's own board. `template.origin` in the
+manifest names the checkout the adoption ran from, and its remote is the
+board:
+
+```sh
+git -C $(python3 -c "import json; print(json.load(open('.agentkit/manifest.json'))['template']['origin'])") remote get-url origin
+gh issue create --repo <that remote> --body-file <the draft>
+```
+
+The body carries the operator's words quoted, this project's name, and what
+the local edit was, so the template's operator can act on it from the body
+alone. Acting on it is their call, and a rejection costs this project
+nothing: the local copy already carries the fix. A checkout that moved, or a
+board `gh` cannot reach, is not a blocker either way. Say in the recap that
+the feedback was weighed and where it stopped.
+
 **Record every surface you wrote.**
 
 ```sh
@@ -178,5 +214,6 @@ Then stop. `/work` is the next session's first move.
 | "Nothing routed to `.agentkit/local.md`, so there was nothing to report." | Rule 0 reads its absence as nobody having been asked. The recap says it is missing. |
 | "I wrote an empty `.agentkit/local.md` so the file exists." | A stub and an unasked person then look the same, and rule 0 can no longer tell. |
 | "I wrote the file, recording it is bookkeeping." | An unrecorded surface is one the next `/done` cannot see. |
+| "The fix landed in our `CLAUDE.md`, so it is handled." | That file is a copy. The template still ships what this session found wanting. Weigh it for upstream. |
 | "The branch is no ancestor of `main`, so its work never merged." | A squash merge always looks like that. Ask the pull request. |
 | "The gates were green earlier." | Rule 17: output in this session, or they did not pass. |
