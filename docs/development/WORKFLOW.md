@@ -24,9 +24,9 @@ Every word committed follows [`STYLE.md`](STYLE.md).
 ## What a machine checks
 
 A rule with no mechanical consumer decays into a convention people follow when
-they remember. Rules 17 and 24 are checked here today, by `bin/verify` over
-`.agentkit/gates.toml`. The rest of the table is the design, and #10 is the
-process job that asserts it:
+they remember. Rule 17's gate list and rule 24 are checked here today, by
+`bin/verify` over `.agentkit/gates.toml`. The rest of the table is the design,
+and #10 is the process job that asserts it:
 
 | Rule | Asserted by |
 |---|---|
@@ -42,6 +42,8 @@ reads all thirteen rules instead.
 What no check reaches, and why: whether an issue existed before the work
 started (10), whether a body reached `gh` as a file (14), whether the label
 list was read before labels were applied (15, only the result is visible),
+whether a new assertion was seen to fail before it passed (17, where a runner
+reaches the gates and only mutation testing would reach the demonstration),
 whether the merge was permitted (18, the permission is a sentence in
 `.agentkit/team.md` and a machine cannot tell an approved merge from an
 impatient one), whether a reader would expect everything in the pull request
@@ -308,6 +310,23 @@ false claim about the state of the branch. Run it, then say what it printed.
 This is stronger than listing commands and trusting they were run, and it is
 taken from superpowers' `verification-before-completion`, read at v6.3.0 on
 2026-08-29.
+
+**A new assertion is run against the state it is meant to reject, and the
+failure goes in the pull request body beside the pass.** In practice one
+command: stash the change, run the new test, see it fail, restore. A green from
+an assertion that cannot fail is a false claim about the state of the test, and
+it is the quieter of the two, because it keeps being green afterwards.
+
+Three passed in one week checking nothing. `bin/check-style` selects files with
+`git ls-files`, so it printed `Style is clean` over a tree that was never
+`git init`ed (#141). The citation test in #159 searched a window of lines for
+the phrase `agentkit checkout`, and a citation that wraps puts the next line's
+indentation inside the phrase; one line more of window and it would have
+matched every file. The subject test in #176 called the `pull()` helper with a
+`subject=` keyword that helper does not take, so the override sat unread in the
+payload dict and the default subject was checked. Each one was found by running
+the assertion against a tree where it should fail. Reading the code found none
+of them.
 
 ### 18. Merging your own pull request is a decision somebody has to have made
 
