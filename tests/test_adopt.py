@@ -2078,6 +2078,18 @@ class TestTheProjectCommand:
         assert "**`shaping`.**" in body and "`shape` skill" in body
         assert "**`building`.**" in body and "`/work`" in body
 
+    def test_only_shaping_says_the_tree_carries_no_intent(self, project):
+        """#184: a session read a framework-less `package.json` in a SvelteKit app and
+        reported the seeded gates were wrong for a static-CSS repository. `building`
+        reads the board, which states intent, so the sentence lands in one branch.
+        """
+        adopt.seed_command(project, ANSWERS, "demo")
+        body = (project / ".claude/commands/demo.md").read_text()
+        shaping, _, building = body.partition("**`building`.**")
+        assert "never what is intended" in shaping
+        assert "question for the operator" in shaping
+        assert "what is intended" not in building
+
     def test_the_frontmatter_carries_the_slug_and_never_the_raw_name(self, project):
         """A project name may hold a quote or a colon, and the slug never can."""
         adopt.seed_command(project, {**ANSWERS, "name": 'Bob"s: thing'}, "bob-s-thing")
