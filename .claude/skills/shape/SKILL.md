@@ -27,6 +27,13 @@ Check these and print the fix. Don't work around them.
 | A router with the numbers held open | `grep -n "^## 1 to 8" CLAUDE.md` | `adopt` seeds it. On a router the project wrote, ask where its constraints already live |
 | Somewhere to file the questions | `gh issue list` | Without a tracker the answers still reach the router. Say that the reasoning has nowhere durable to go, and offer a file under `docs/` |
 | The session is in the project, not in the agentkit checkout | `git remote -v` | `cd` there first. `gh` reads the working directory's remote, so a run from the wrong one files the project's constraints against the template |
+| The process rules, in the session before the first word of output | `ls docs/development/WORKFLOW.md docs/development/STYLE.md` | Read both now. Where the project keeps its process rules elsewhere, read that file instead |
+
+**Read those two before anything else here runs.** Everything this skill
+produces is written by hand: an issue body under rule 22, rules under rule 23, a
+branch under rule 11, a pull request under rule 16, and every word of the four
+under rule 24. `adopt` needs no such row, because `bin/adopt` renders its files
+and owns the process around them.
 
 ## Read the project before asking it anything
 
@@ -41,8 +48,8 @@ attention is on constraints.
 
 ## The questions, in this order
 
-Six openers. Each answer narrows the one below it, so ask them in order and in
-one pass.
+Six openers, in one pass. Each answer narrows the one below it, so keep the
+order of the table.
 
 | Ask | What it settles | What answering costs |
 |---|---|---|
@@ -56,6 +63,27 @@ one pass.
 **Rewrite each one in the project's own nouns before asking it.** "What does
 this refuse to build" gets a shrug. "Does this ever show an hour it did not
 measure" gets an answer, and the answer is a rule.
+
+**Ask with `AskUserQuestion`, four questions and then two.** The tool takes four
+per call. Nothing in the six is derivable from the tree, so none of them can be
+dropped to make six fit one call, and the split follows the dependency the order
+already carries: the first four, then the last two written from what the first
+four answered. A run on 2026-08-30 opened with all six in prose in one message,
+and the operator stopped it and asked for the question tool.
+
+**Every option carries a `preview` holding a real file tree, a real path or real
+code.** That is what the answer rate turned on in the same run: 2 useful answers
+out of 4 in the prose pass, 12 out of 12 after the switch. Two of those first
+four option sets had no correct answer in them, and the operator spent the reply
+correcting the frame. Three adjectives are three plausible things somebody has
+to hold in their head at once. An option whose preview shows
+`experiments/<feature>/index.html` beside `reference.html` gets taken or
+rejected in seconds.
+
+**One option in every list is "we have not decided".** The opening of this skill
+takes that as an answer, and a question offering it gets it. In the same run
+"write no rule for this" was on the list for what makes a candidate boring, the
+operator took it, and the question stayed open with their name on it.
 
 Six openers, and a project's list runs longer. Anything the operator raises
 joins the issue. The numbering below is capped and the question list is not, so
