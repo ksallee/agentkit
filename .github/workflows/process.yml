@@ -41,7 +41,7 @@ jobs:
   pull-request:
     name: Rules 11, 13, 15, 16, 19 and 24 over the pull request
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, agentkit-local]
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v7
@@ -58,7 +58,7 @@ jobs:
   push:
     name: Rule 12 over the push
     if: github.event_name == 'push'
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, agentkit-local]
     steps:
       # Full history, because the check asks git whether the sha the branch was
       # at is still reachable from the sha it is at now. A shallow clone has

@@ -28,7 +28,7 @@ nothing, because nothing is written until the plan is approved:
   files. Absent means nothing here has been seeded.
 
 `bin/adopt` reads the manifest for itself, so a misreading costs what the
-session does around the tool. A first adoption needs all six answers before
+session does around the tool. A first adoption needs all seven answers before
 anything is written. An update has them in `.agentkit/team.md` already, and
 what it needs read back is which files a rerun replaces and which it keeps. The
 wrong directory means every one of those questions was asked about the wrong
@@ -80,10 +80,10 @@ directory was empty. Say which state the target is in, and where it has files an
 say what is in the tree before writing over it. `--phase` reads the same fact
 and defaults to `shaping` when there is no commit.
 
-## The six answers
+## The seven answers
 
-All six are in the table below, and `surface` has a section of its own under
-`### The design settings`. Five carry a default worth accepting.
+All seven are in the table below, and `surface` has a section of its own under
+`### The design settings`. Six carry a default worth accepting.
 
 **Every question carries its options and a recommendation.** That is the
 property, and it is the one that failed in #128: four rounds there were spent
@@ -96,18 +96,22 @@ claude question system, with all questions in one go, that would be the
 simplest." It renders each question with its options as choices, so the options
 are in front of the operator instead of in a paragraph they have to read back.
 
-**One call carries all six.** The tool takes four questions, and six fit
-because two of them are answers the run already holds. The four with a fixed
-range go in the form: the pack, who merges, shaping or building, and `surface`.
-Each option carries what it costs in its `description`, and the one you would
-take goes first, labelled `(Recommended)`.
+**One call carries all seven.** The tool takes four questions, and seven fit
+because three of them are answers the run already holds. The four in the form:
+the pack, who merges, shaping or building, and `surface`. Each option carries
+what it costs in its `description`, and the one you would take goes first,
+labelled `(Recommended)`.
 
-**The name and the summary are stated as defaults in the same message, and the
-operator corrects them.** Both are free text, so a form slot buys nothing over a
-line somebody can type over. Say where each one came from: the name is the
-directory name, and the summary is usually already in the request that started
-the run. Say what decided the recommended phase too: whether the target has a
-commit. A default whose source is stated is one the operator can check.
+**The name, the summary and the runner are stated as defaults in the same
+message, and the operator corrects them.** The first two are free text, so a
+form slot buys nothing over a line somebody can type over. Say where each one
+came from: the name is the directory name, and the summary is usually already
+in the request that started the run. Say what decided the recommended phase
+too: whether the target has a commit. A default whose source is stated is one
+the operator can check. The runner has a fixed range and stays out of the form
+anyway, because `cloud` is right for any project without a registered runner
+and a project with one knows it: state the default and the condition, and the
+correction is one word back.
 
 Asking in bulk is not what went wrong in #128, and batching does not bring it
 back. What brings it back is a question with no options in it.
@@ -120,6 +124,7 @@ back. What brings it back is a question with no options in it.
 | Who reviews and who merges | `--merge` | The author does not merge their own pull request. |
 | Shaping or building | `--phase` | `building` when the target has a commit, `shaping` when it does not. |
 | Where a finished design lands | `--surface canvas\|file, <path>\|none` | Unanswered, and `team.md` says so until somebody picks one. |
+| Where CI runs | `--runner cloud\|local` | `cloud`, GitHub's hosted pool. |
 
 **The pack has no default and adopt refuses to write the team layer without
 it.** A gate list naming a command the project does not run makes rule 17
@@ -175,6 +180,18 @@ change may. Whatever the operator answers goes into `team.md` in their own
 words, and no check reads it, because `bin/check-process` cannot tell an
 approved merge from an impatient one. An answer other than the default is a
 setting the rules offer rather than an exception to them.
+
+**`--runner local` puts CI on a self-hosted runner, labelled `<name>-local`,
+and is refused on a public repository.** A fork's pull request runs its code on
+the runner's machine, so `adopt` reads the visibility with `gh` and exits
+before writing anything. `local` renders three things `cloud` does not: both
+workflows' `runs-on` lines name the label, `gates.yml` carries a preflight job
+that goes red naming the team file when no runner takes the gates job within
+two minutes, and `team.md` gets a section saying how a session checks the
+runner is alive before opening a pull request. Registering the runner itself is
+the operator's work and this flag assumes it is done or about to be. The
+workflows and the team layer are seeded once, so a project switching later
+makes the edits by hand, and the rendered section names every one of them.
 
 The name and the summary reach two files: `.agentkit/team.md` and the project's
 `CLAUDE.md`, which an agent loads every turn. A summary nobody gave leaves both
@@ -426,7 +443,7 @@ none. Where the project already has history the adoption is ordinary work, and
 it takes an issue and a branch like anything else.
 
 **The subject is imperative with no issue number**: `Adopt agentkit into
-<project>`. The body carries the six answers and the gate table, because there
+<project>`. The body carries the seven answers and the gate table, because there
 is no issue and no pull request holding them here, and `git blame` on a seeded
 file is then the one path back to which pack was chosen. Run `bin/check-style`
 over the message before committing, the same as rule 24 asks of every other

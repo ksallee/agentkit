@@ -733,6 +733,36 @@ DESIGN_TABLE = (
 # from. `tests/test_adopt.py` checks the two agree.
 TEAM_FILES = ("gates.toml", "phase.json", "team.md")
 
+# Rendered into `## Conventions this project settled` when the runner answer
+# is `local`, and nowhere when it is `cloud`: a hosted project reads nothing
+# about runners (#194). The team layer is seeded once, so a project switching
+# later makes the edits this text names by hand, and the text names all of
+# them so the switch is one read.
+LOCAL_RUNNER_NOTE = (
+    "**CI runs on this project's own self-hosted runner, label `{label}`.**\n"
+    "Both workflow files name it in their `runs-on` lines, so no hosted\n"
+    "minutes are billed and the gates run only while that machine is up.\n"
+    "Name the machine here once the runner is registered, so a session that\n"
+    "finds it dead can say what to start. The machine needs `gh`, which the\n"
+    "process job reads the pull request through, and whatever the gates'\n"
+    "dependencies compile with, such as `make` for a package with a native\n"
+    "half. Hosted runners carry all of that and a fresh machine carries none\n"
+    "of it, so the first run on a new machine is where the list gets found.\n"
+    "\n"
+    "A dead runner fails silently: a queued job waits for a machine that\n"
+    "will never claim it, and the pull request reads as slow CI. Before\n"
+    "opening a pull request, check\n"
+    "`gh api repos/{{owner}}/{{repo}}/actions/runners` reports a runner with\n"
+    "this label online. A check still queued two minutes after a push means\n"
+    "the runner is down: say so and name the machine instead of waiting.\n"
+    "The preflight job in `gates.yml` runs the same check on every opened\n"
+    "pull request.\n"
+    "\n"
+    "Moving to hosted CI is a hand edit, and this is the whole of it:\n"
+    "`ubuntu-latest` in both files' `runs-on` lines, the preflight job in\n"
+    "`gates.yml` deleted, and this section with it.\n"
+)
+
 
 def team_files(answers: dict[str, str]) -> dict[str, str]:
     """The three team-layer files, rendered from the answers.
@@ -753,6 +783,9 @@ def team_files(answers: dict[str, str]) -> dict[str, str]:
     an answer given thirty seconds earlier (#162). `review` renders as its
     default beside it, because #195 settled the default and a sixth question at
     adoption buys nothing over one word a project edits.
+
+    A `local` runner answer renders `LOCAL_RUNNER_NOTE` into the conventions
+    section, and `cloud` renders nothing there (#194).
     """
     pack = answers["pack"]
     surface = answers["surface"]
@@ -788,7 +821,12 @@ def team_files(answers: dict[str, str]) -> dict[str, str]:
             "## Conventions this project settled\n\n"
             "What a reader would get wrong without being told. Empty is honest\n"
             "until something has actually been settled.\n\n"
-            "## Design\n\n" + DESIGN_TABLE + "\n"
+            + (
+                LOCAL_RUNNER_NOTE.format(label=runner_label(answers["name"])) + "\n"
+                if answers["runner"] == "local"
+                else ""
+            )
+            + "## Design\n\n" + DESIGN_TABLE + "\n"
             + (
                 f"**{answers['name']}: surface `{surface}`.**\n"
                 if surface
@@ -1196,6 +1234,76 @@ SETUP_NODE = (
 
 WORKFLOW_FILES = ("gates.yml", "process.yml")
 
+# The seventh answer: where CI runs. Two values and no mixed one, because a
+# split would put two `runs-on` values in one rendered workflow and a reader
+# would have to know which half runs where (#194). `cloud` is GitHub's hosted
+# pool, which bills minutes on a private repository. `local` is a self-hosted
+# runner somebody registered under the label `runner_label` derives, measured
+# here at 71 runner-minutes billed over two days of one person's experiments.
+#
+# `local` is refused on a public repository, in `main`: a fork's pull request
+# runs its code on the runner's machine, which is GitHub's own reason to warn
+# against the pairing. A project that wants it anyway edits the rendered
+# workflow by hand, which is a deliberate act with a reader in front of it.
+RUNNERS = ("cloud", "local")
+
+
+def runner_label(name: str) -> str:
+    """The label a project's self-hosted runner carries, derived from its name.
+
+    The slug rather than the raw name, so `Demo App` labels `demo-app-local`
+    and the label survives being typed into a `runs-on` list.
+    """
+    return f"{command_name(name)}-local"
+
+
+def _runs_on(runner: str, label: str) -> str:
+    """The `runs-on` value both workflows render, from the answer."""
+    return f"[self-hosted, {label}]" if runner == "local" else "ubuntu-latest"
+
+
+def preflight_job(label: str) -> str:
+    """The job that turns a dead self-hosted runner into a red check.
+
+    A dead runner fails silently: a queued job waits for a machine that will
+    never claim it, and the pull request reads as slow CI. This job runs on a
+    hosted runner, waits for the run's own gates job to leave `queued`, and
+    fails naming what to start when two minutes pass without that.
+
+    The check is indirect on purpose. Asking GitHub whether a runner is online
+    reads `repos/{owner}/{repo}/actions/runners`, which wants the
+    `administration` scope, and a workflow's token never carries it (#194).
+
+    `opened` and `reopened` only, so it bills about one hosted minute per pull
+    request instead of one per push. A runner that dies mid-branch is the
+    session's to catch, and the team layer's runner section says how.
+    """
+    return (
+        "\n"
+        "  preflight:\n"
+        "    name: A dead runner is a red check\n"
+        "    if: github.event_name == 'pull_request' && (github.event.action == 'opened' || github.event.action == 'reopened')\n"
+        "    runs-on: ubuntu-latest\n"
+        "    timeout-minutes: 4\n"
+        "    permissions:\n"
+        "      actions: read\n"
+        "    steps:\n"
+        "      # The runners API wants the administration scope, which this token\n"
+        "      # never has, so the check is indirect: wait for this run's own gates\n"
+        "      # job to leave `queued`. A live runner claims it in seconds.\n"
+        "      - run: |\n"
+        "          for _ in $(seq 12); do\n"
+        "            sleep 10\n"
+        '            status=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?per_page=100" \\\n'
+        "              --jq '[.jobs[] | select(.name | startswith(\"Every gate\")) | .status] | first')\n"
+        '            if [ -n "$status" ] && [ "$status" != "queued" ]; then exit 0; fi\n'
+        "          done\n"
+        f'          echo "::error::No runner labelled {label} took the gates job within two minutes, so the runner is offline. .agentkit/team.md names the machine that carries it. Start it, then re-run the failed jobs."\n'
+        "          exit 1\n"
+        "        env:\n"
+        "          GH_TOKEN: ${{ github.token }}\n"
+    )
+
 
 def pnpm_dirs(pack: str) -> list[str]:
     """Every directory a pnpm gate runs in, `.` for one that names no `cwd`."""
@@ -1215,7 +1323,7 @@ def toolchain(pack: str) -> str:
     return steps
 
 
-def gates_workflow(pack: str) -> str:
+def gates_workflow(pack: str, runner: str = "cloud", label: str = "") -> str:
     """`.github/workflows/gates.yml`, which names no gate.
 
     One step. `bin/verify` reads `.agentkit/gates.toml` and runs everything
@@ -1259,13 +1367,14 @@ def gates_workflow(pack: str) -> str:
         "jobs:\n"
         "  gates:\n"
         "    name: Every gate in .agentkit/gates.toml\n"
-        "    runs-on: ubuntu-latest\n"
+        f"    runs-on: {_runs_on(runner, label)}\n"
         "    steps:\n" + toolchain(pack) + "      - run: bin/verify\n"
+        + (preflight_job(label) if runner == "local" else "")
     )
 
 
-def process_workflow() -> str:
-    """`.github/workflows/process.yml`, which reads no pack and no answer.
+def process_workflow(runner: str = "cloud", label: str = "") -> str:
+    """`.github/workflows/process.yml`, which reads no pack.
 
     Seeded even though `.agentkit/process.toml` is not. Five of the seven
     checks are code and travel unchanged, so they run on the first pull
@@ -1320,7 +1429,7 @@ def process_workflow() -> str:
         "  pull-request:\n"
         "    name: Rules 11, 13, 15, 16, 19 and 24 over the pull request\n"
         "    if: github.event_name == 'pull_request'\n"
-        "    runs-on: ubuntu-latest\n"
+        f"    runs-on: {_runs_on(runner, label)}\n"
         "    steps:\n"
         "      - uses: actions/checkout@v5\n"
         "      - uses: astral-sh/setup-uv@v7\n"
@@ -1337,7 +1446,7 @@ def process_workflow() -> str:
         "  push:\n"
         "    name: Rule 12 over the push\n"
         "    if: github.event_name == 'push'\n"
-        "    runs-on: ubuntu-latest\n"
+        f"    runs-on: {_runs_on(runner, label)}\n"
         "    steps:\n"
         "      # Full history, because the check asks git whether the sha the branch\n"
         "      # was at is still reachable from the sha it is at now. A shallow clone\n"
@@ -1359,7 +1468,12 @@ def process_workflow() -> str:
 
 def workflow_files(answers: dict[str, str]) -> dict[str, str]:
     """Both workflows, rendered from the answers."""
-    return {"gates.yml": gates_workflow(answers["pack"]), "process.yml": process_workflow()}
+    runner = answers["runner"]
+    label = runner_label(answers["name"]) if runner == "local" else ""
+    return {
+        "gates.yml": gates_workflow(answers["pack"], runner, label),
+        "process.yml": process_workflow(runner, label),
+    }
 
 
 def seed_workflows(project: Path, answers: dict[str, str]) -> list[Outcome]:
@@ -1775,6 +1889,8 @@ def report(
     command: list[Outcome] = (),
     command_problem: str = "",
     labels: tuple[list[Outcome], str] | None = None,
+    runner: str = "cloud",
+    label: str = "",
 ) -> None:
     """Name every file and both sides of every kept edit.
 
@@ -1789,6 +1905,9 @@ def report(
     """
     print(f"\nproject  {project}")
     print(f"pack     {pack}, {pack_from}. The file lists below are rendered from it.")
+    if runner == "local":
+        print(f"runner   local. CI runs on [self-hosted, {label}], bills no hosted minutes,")
+        print("         and the preflight job in gates.yml goes red when the runner is down.")
     for row in files:
         line = f"  {row.status:<9} {row.rel}"
         if row.sidecar:
@@ -1919,6 +2038,12 @@ def main(argv: list[str] | None = None) -> int:
         help="Where a finished design lands: canvas, none, or file and a path, as in 'file, design/'.",
     )
     ap.add_argument(
+        "--runner",
+        choices=RUNNERS,
+        default="cloud",
+        help="Where CI runs: GitHub's hosted pool, or a self-hosted runner labelled <name>-local. Refused on a public repository.",
+    )
+    ap.add_argument(
         "--no-gates",
         action="store_true",
         help="Skip the gate run a first write ends with, and the install before it.",
@@ -1942,6 +2067,30 @@ def main(argv: list[str] | None = None) -> int:
             print("--check writes nothing, so it does not run with --write.", file=sys.stderr)
             return CHECK_UNANSWERED
         return check(args.template, project, args.pack or recorded_pack(project) or "none")
+
+    # Refused before anything is planned or written, because the failure it
+    # prevents is a fork's pull request executing its code on the runner's
+    # machine (#194). Read rather than asked: `gh` knows the visibility and an
+    # operator can be wrong about it. A repository gh cannot read is left to
+    # the operator with a printed line, since a project with no reachable
+    # remote runs no Actions at all yet.
+    if args.runner == "local":
+        seen = _gh(project, "repo", "view", "--json", "visibility", "--jq", ".visibility")
+        visibility = seen.stdout.strip() if seen is not None and seen.returncode == 0 else ""
+        if visibility == "PUBLIC":
+            print("--runner local is refused on a public repository.", file=sys.stderr)
+            print(
+                "A pull request from a fork runs its code on the runner's machine.\n"
+                "Make the repository private, or answer cloud. A project that wants\n"
+                "the pairing anyway edits the rendered workflows by hand.",
+                file=sys.stderr,
+            )
+            return 2
+        if not visibility:
+            print(
+                "gh could not read this repository's visibility, and local is unsafe\n"
+                "on a public one. Check it by hand before the first pull request."
+            )
 
     # The gate list and the gates workflow are both rendered from the pack, and
     # a project adopted before the workflow existed has one and not the other.
@@ -1979,6 +2128,7 @@ def main(argv: list[str] | None = None) -> int:
         # Empty leaves the question open in `team.md`. The other answers each
         # have a default worth writing, and a surface nobody picked has none.
         "surface": args.surface,
+        "runner": args.runner,
     }
 
     # Read before anything is written, because the write creates the manifest
@@ -2024,6 +2174,8 @@ def main(argv: list[str] | None = None) -> int:
         command=command,
         command_problem=command_problem,
         labels=labels,
+        runner=args.runner,
+        label=runner_label(answers["name"]) if args.runner == "local" else "",
     )
     if args.write and first_run and not args.no_gates:
         run_gates(project, pack)

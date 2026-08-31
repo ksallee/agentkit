@@ -33,7 +33,7 @@ adopt = importlib.util.module_from_spec(_spec)
 sys.modules["adopt"] = adopt
 _loader.exec_module(adopt)
 
-# The six answers, as `main` assembles them. One constant, because the router
+# The seven answers, as `main` assembles them. One constant, because the router
 # and the team layer are rendered from the same dict. `surface` is empty here
 # because `main` passes that when nobody answered `--surface`, and the
 # team layer says so in place of a value.
@@ -44,6 +44,7 @@ ANSWERS = {
     "phase": "building",
     "merge": "Both of us review.",
     "surface": "",
+    "runner": "cloud",
 }
 
 SKILL = ".claude/skills/demo/SKILL.md"
@@ -1792,6 +1793,109 @@ class TestWhatThePlanKnowsWithoutTheAnswers:
 
     def test_the_workflow_names_agree(self):
         assert set(adopt.WORKFLOW_FILES) == set(adopt.workflow_files(ANSWERS))
+
+
+class TestTheRunnerAnswer:
+    """`--runner`, the seventh answer, and what `local` renders (#194).
+
+    `cloud` renders what every adoption rendered before the answer existed,
+    so its tests pin the absence: no self-hosted line, no preflight job, no
+    runner section in the team layer. A hosted project reads nothing about
+    runners.
+    """
+
+    LOCAL = {**ANSWERS, "runner": "local"}
+
+    def test_the_label_comes_from_the_slug(self):
+        assert adopt.runner_label("Demo App") == "demo-app-local"
+
+    def test_local_puts_the_gates_job_on_the_runner(self):
+        body = adopt.workflow_files(self.LOCAL)["gates.yml"]
+        assert "    runs-on: [self-hosted, demo-local]\n" in body
+
+    def test_local_adds_the_preflight_job_on_hosted_minutes(self):
+        """The job that watches the runner cannot run on the runner it watches."""
+        body = adopt.workflow_files(self.LOCAL)["gates.yml"]
+        assert "  preflight:\n" in body
+        assert body.count("    runs-on: ubuntu-latest\n") == 1
+        assert "No runner labelled demo-local" in body
+
+    def test_the_preflight_fires_once_per_pull_request(self):
+        """`synchronize` would bill a hosted minute per push, which is what `local` avoids."""
+        body = adopt.workflow_files(self.LOCAL)["gates.yml"]
+        assert "github.event.action == 'opened'" in body
+        assert "'synchronize'" not in body.split("preflight:")[1]
+
+    def test_local_puts_both_process_jobs_on_the_runner(self):
+        body = adopt.workflow_files(self.LOCAL)["process.yml"]
+        assert body.count("    runs-on: [self-hosted, demo-local]\n") == 2
+        assert "ubuntu-latest" not in body
+
+    def test_local_renders_the_team_layer_section(self):
+        body = adopt.team_files(self.LOCAL)["team.md"]
+        assert "self-hosted runner, label `demo-local`" in body
+
+    def test_cloud_renders_none_of_it(self):
+        flows = adopt.workflow_files(ANSWERS)
+        assert "self-hosted" not in flows["gates.yml"] + flows["process.yml"]
+        assert "preflight" not in flows["gates.yml"]
+        assert "runner" not in adopt.team_files(ANSWERS)["team.md"]
+
+    def _visibility(self, answer):
+        import subprocess
+
+        def fake(project, *args):
+            assert "repo" in args
+            return subprocess.CompletedProcess(args, 0, stdout=answer + "\n", stderr="")
+
+        return fake
+
+    def test_local_is_refused_on_a_public_repository(self, template, project, monkeypatch, capsys):
+        monkeypatch.setattr(adopt, "_gh", self._visibility("PUBLIC"))
+        code = adopt.main(
+            [str(project), "--write", "--pack", "python", "--runner", "local", "--template", str(template)]
+        )
+        assert code == 2
+        assert "fork" in capsys.readouterr().err
+        assert not (project / ".agentkit").exists()
+
+    def test_local_writes_on_a_private_repository(self, template, project, monkeypatch):
+        monkeypatch.setattr(adopt, "_gh", self._visibility("PRIVATE"))
+        adopt.main(
+            [
+                str(project),
+                "--write",
+                "--pack",
+                "python",
+                "--runner",
+                "local",
+                "--template",
+                str(template),
+                "--no-gates",
+                "--no-labels",
+            ]
+        )
+        body = (project / ".github" / "workflows" / "gates.yml").read_text()
+        assert "    runs-on: [self-hosted, project-local]\n" in body
+
+    def test_unreadable_visibility_warns_and_writes(self, template, project, monkeypatch, capsys):
+        monkeypatch.setattr(adopt, "_gh", lambda *a: None)
+        adopt.main(
+            [
+                str(project),
+                "--write",
+                "--pack",
+                "python",
+                "--runner",
+                "local",
+                "--template",
+                str(template),
+                "--no-gates",
+                "--no-labels",
+            ]
+        )
+        assert "visibility" in capsys.readouterr().out
+        assert (project / ".github" / "workflows" / "gates.yml").is_file()
 
 
 class TestTheIgnoreFile:
