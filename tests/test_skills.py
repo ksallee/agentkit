@@ -21,6 +21,12 @@ come off the imported module's `STATUSES` tuple: a parse of the file saw only
 the shapes its author had met and passed while `appended` was missing (#70),
 and enumerating by spelling held only while every status was spelled
 `APPENDED = "appended"` (#78).
+
+`CLAUDE.md` and `README.md` describe `adopt` in a sentence, and the number of
+answers it asks for is not part of that sentence. It was three times, and it
+was wrong twice in two days: #136 after #123 removed a setting, #192 after #162
+added one. The last test here holds both files to "the answers", which is true
+at whatever the skill has settled on.
 """
 
 from __future__ import annotations
@@ -348,3 +354,46 @@ def test_a_numbered_example_inside_a_fence_is_not_a_step() -> None:
     assert len(re.findall(r"^## \d+\.", FENCED_EXAMPLE, re.M)) == 4
     assert _steps(FENCED_EXAMPLE) == 2
     assert not _miscounts(_description(FENCED_EXAMPLE), _steps(FENCED_EXAMPLE))
+
+
+# ---------------------------------------------------------------------------
+# What `CLAUDE.md` and `README.md` may count about the `adopt` skill
+
+
+# A count of what `adopt` asks for, in either spelling. `NUMBER_WORDS` is the
+# same map the description guard above reads, so "five" and `5` both match.
+COUNTED = re.compile(r"\b(\d+|" + "|".join(NUMBER_WORDS) + r")\s+(answers|questions)\b", re.I)
+
+UNCOUNTED = {"CLAUDE.md": ROUTER, "README.md": ROOT / "README.md"}
+
+
+def test_the_count_guard_matches_a_count() -> None:
+    """A regex that matched nothing would pass with the number restored."""
+    assert COUNTED.search("asks the five answers in one pass")
+    assert COUNTED.search("it asks 6 questions")
+    assert not COUNTED.search("asks the answers the team layer and the router need")
+
+
+def test_no_document_counts_the_answers_adopt_asks_for() -> None:
+    """The drift #192 measured, twice in two days and once from each direction.
+
+    #162 added `--surface` and the skill went to six answers while three
+    sentences in these two files went on saying five. #136 was the same defect
+    after #123 removed a setting. Both files describe `adopt` in a sentence and
+    neither needs a number to do it: "the answers the team layer and the router
+    need" is true at five, six or seven.
+
+    The count lives in `.claude/skills/adopt/SKILL.md`, which is the file that
+    asks them, and this holds the two documents a reader meets first to a
+    sentence that cannot go stale.
+    """
+    counted = {
+        name: [" ".join(found.group().split()) for found in COUNTED.finditer(path.read_text(encoding="utf-8"))]
+        for name, path in UNCOUNTED.items()
+    }
+    found = {name: phrases for name, phrases in counted.items() if phrases}
+    assert not found, (
+        f"a number of answers or questions is stated outside the skill that "
+        f"asks them: {found}. The skill carries the count; these two say "
+        f"\"the answers\"."
+    )
