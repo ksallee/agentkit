@@ -1079,7 +1079,10 @@ COMMAND_SLUG = re.compile(r"[^a-z0-9]+")
 # of use and two commands' worth of reading.
 #
 # `shaping` is named on its own, because a project in that phase has no board
-# and `pick-work` says as much. The next move there is `shape`.
+# and `pick-work` says as much. The next move there is `shape`. That branch
+# also says the tree carries no intent, because a project in that phase has
+# almost nothing built and a session reading the little there is reports a
+# model of the project it then carries into the questions (#184).
 COMMAND = """---
 description: Start working on {slug}, from the layers, the phase and the last session
 ---
@@ -1091,7 +1094,9 @@ Read the three layers rule 0 names, in order: `CLAUDE.md`, then
 
 **`shaping`.** There is no board worth reading yet. Run the `shape` skill in
 `.claude/skills/shape/`, which asks this project for the constraints rules 1 to
-8 hold open, and say so rather than proposing work.
+8 hold open, and say so rather than proposing work. The tree says what was
+built, never what is intended. Anything the layers leave open goes in the
+report as a question for the operator.
 
 **`building`.** Say where the last session stopped: the branch, the open pull
 requests, whether the tree is clean, and what `bin/verify` printed. Then run
