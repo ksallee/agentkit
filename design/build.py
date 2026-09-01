@@ -150,6 +150,10 @@ def artboard(name: str, title: str, body: str, width: int, height: int) -> str:
     canvas and a pull request read one set of files. The prefix differs because
     the provenance differs: `data-captured-*` names a screen that ran,
     `data-generated-*` names the function that drew one that has not.
+
+    The head loads `./support.js`, which the canvas editor serves beside the
+    artboards. Without that line an artboard opens in the canvas as flat markup
+    and nothing on it can be selected or edited.
     """
     digest = hashlib.sha256(body.encode("utf-8")).hexdigest()[:DIGEST_CHARS]
     root = (
@@ -166,6 +170,7 @@ def artboard(name: str, title: str, body: str, width: int, height: int) -> str:
 <html>
 <head>
   <meta charset="utf-8">
+  <script src="./support.js"></script>
 </head>
 <body>
 <x-dc>

@@ -130,7 +130,11 @@ function section(title, note, inner) {
  *  The same extension and the same root shape as a captured artboard, so the
  *  canvas and a pull request read one set of files. The prefix differs because
  *  the provenance differs: `data-captured-*` names a screen that ran,
- *  `data-generated-*` names the function that drew one that has not. */
+ *  `data-generated-*` names the function that drew one that has not.
+ *
+ *  The head loads `./support.js`, which the canvas editor serves beside the
+ *  artboards. Without that line an artboard opens in the canvas as flat markup
+ *  and nothing on it can be selected or edited. */
 function artboard(name, title, body, width, height) {
 	const digest = createHash('sha256').update(body, 'utf8').digest('hex').slice(0, DIGEST_CHARS);
 	const root =
@@ -145,6 +149,7 @@ function artboard(name, title, body, width, height) {
 <html>
 <head>
   <meta charset="utf-8">
+  <script src="./support.js"></script>
 </head>
 <body>
 <x-dc>

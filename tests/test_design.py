@@ -39,6 +39,10 @@ _loader.exec_module(adopt)
 # The pair the whole workflow rests on: one artifact to edit, one to review.
 FORMS = (".dc.html", ".classes.html")
 
+# The one line in an artboard head the canvas editor needs to make the file
+# editable rather than a picture.
+SUPPORT = '<script src="./support.js"></script>'
+
 
 def text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
@@ -59,6 +63,21 @@ class TestTheContract:
     def test_the_stamp_carries_a_digest(self):
         """A commit alone cannot tell a duplicated artboard its reference moved over a dirty tree."""
         assert "digest" in stamp_fields()
+
+    def test_the_canvas_file_loads_the_support_script_and_the_measured_one_does_not(self):
+        """#206. `assemble` writes what the canvas opens, `plain` what a driver measures.
+
+        The canvas editor serves `support.js` beside the artboards, so a head
+        without it opens flat. A driver measuring boxes runs where nothing
+        serves that file.
+        """
+        body = text(CONTRACT)
+        # `rindex`, because a local named `plain` inside `curated` is declared
+        # further up and an `index` here slices backwards over an empty string.
+        opens, measures = body.index("const assemble ="), body.rindex("const plain =")
+        assert opens < measures, "capture.js no longer declares assemble before plain"
+        assert SUPPORT in body[opens:measures]
+        assert SUPPORT not in body[measures:]
 
     def test_every_stamp_field_is_written_as_an_attribute_and_a_comment(self):
         body = text(CONTRACT)
@@ -203,6 +222,17 @@ class TestTheGenerator:
         table = body[body.index("GREYS = [") : body.index("GREY = {")]
         for grey in re.findall(r"#[0-9a-f]{6}", table):
             assert body.count(grey) == 1, f"{grey} is spelled more than once"
+
+    def test_a_generated_artboard_loads_the_canvas_support_script(self, tmp_path):
+        """#206. The canvas editor serves `support.js` beside the artboards.
+
+        An artboard whose head never loads it opens as flat markup, with
+        nothing selectable and no properties panel, so a checkpoint delivers a
+        picture. agentkit-themes seeded five artboards that way.
+        """
+        self.run(["python3", str(BUILD_PY)], tmp_path)
+        body = (tmp_path / "Palette.dc.html").read_text(encoding="utf-8")
+        assert SUPPORT in body
 
     def test_neither_copy_writes_a_name_the_capture_owns(self):
         for generator in (BUILD_PY, BUILD_MJS):

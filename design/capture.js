@@ -256,11 +256,15 @@ globalThis.agentkitCapture = (() => {
 		return `<!-- captured ${comment} -->\n<div ${marks} style="${attr(root)}">\n${form.body}\n</div>\n`;
 	};
 
-	/** One artboard file, which is what the canvas opens. */
+	/** One artboard file, which is what the canvas opens.
+	 *  The head loads `./support.js`, which the canvas editor serves beside the
+	 *  artboards. Without that line an artboard opens in the canvas as flat
+	 *  markup and nothing on it can be selected or edited. */
 	const assemble = (form, stamp, title) => `<!doctype html>
 <html>
 <head>
   <meta charset="utf-8">
+  <script src="./support.js"></script>
 </head>
 <body>
 <x-dc>
@@ -277,7 +281,9 @@ ${artboard(form, stamp)}</x-dc>
 	/** The same artboard as a bare document, which is what a driver measures.
 	 *  `<x-dc>` and `<helmet>` are unknown inline elements outside the canvas,
 	 *  so a browser gives them a line box and pushes the artboard down. The
-	 *  canvas strips them; this page never has them. */
+	 *  canvas strips them; this page never has them. It loads no `support.js`
+	 *  for the same reason: the canvas editor serves that file, and a driver
+	 *  measuring boxes runs where nothing does. */
 	const plain = (form, stamp) => `<!doctype html><html lang="en"><head><meta charset="utf-8">${links(form)}<style>${form.css}</style>
 <style>body { margin: 0; }</style></head><body>${artboard(form, stamp)}</body></html>`;
 
