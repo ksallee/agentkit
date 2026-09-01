@@ -50,9 +50,16 @@ the other's tool.
 
 | `review` | What the operator opens mid-work |
 |---|---|
-| `artifact` | A published Claude artifact carrying the artboards, republished in place each pass so one link stays current |
+| `artifact` | A published Claude artifact carrying one checkpoint's artboards, republished in place each pass so one link stays current |
 | `paper` | The designer's own Paper canvas. Nothing here writes to it until a probe prints what its local MCP server returns, which rule 9 requires and nobody has run |
 | `none` | Nothing until step 8 |
+
+**Every checkpoint gets its own canvas and its own link.** Seed a fresh canvas
+file for the checkpoint and publish it to a new artifact URL. Republishing an
+existing canvas updates that canvas, so a session that publishes into a link
+another checkpoint holds replaces what its reviewer was reading. Two agents in
+one session published "the checkpoint" to one page on 2026-08-31, and the
+second overwrote the first (agentkit-themes#6).
 
 Screenshots pasted into a terminal are what a session delivers when nobody
 named the medium. They arrive at whatever size the terminal gives them, drop
