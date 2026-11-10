@@ -4,7 +4,7 @@ How two people and their agents build a project together: the rules, the
 skills, the role guides and the design pipeline, extracted from a project that
 grew them and proved them on real work.
 
-Private. Built for the way we work rather than for adoption by strangers.
+Built for the way we work rather than for adoption by strangers.
 
 ## What it gives a project
 
